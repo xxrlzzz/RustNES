@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
+use crate::cpu::{Cpu, InterruptType};
+use crate::mapper::Mapper;
 use crate::palette_colors::COLORS;
 use crate::picture_bus::PictureBus;
 use crate::types::*;
@@ -34,7 +36,7 @@ const FRAME_END_SCANLINE: usize = 261;
 
 // pixel processing unit
 pub struct Ppu {
-  bus: Rc<RefCell<PictureBus>>,
+  bus: PictureBus,
   screen: Rc<RefCell<VirtualScreen>>,
   sprite_memory: Vec<Byte>,
   scanline_sprites: Vec<Byte>,
@@ -60,7 +62,6 @@ pub struct Ppu {
   // Setup flags and variables
   long_sprites: bool,
   generate_interrupt: bool,
-  should_interrupt: bool,
 
   grey_scale_mode: bool,
   show_sprites: bool,
@@ -73,12 +74,14 @@ pub struct Ppu {
 
   data_address_increment: Address,
   picture_buffer: Vec<Vec<Color>>,
+
+  cpu: Option<Rc<RefCell<Cpu>>>,
 }
 
 impl Ppu {
   pub fn new(pic_bus: PictureBus, screen: Rc<RefCell<VirtualScreen>>) -> Self {
     Self {
-      bus: Rc::new(RefCell::new(pic_bus)),
+      bus: pic_bus,
       screen: screen,
       sprite_memory: vec![0; 64 * 4],
       scanline_sprites: vec![],
@@ -101,7 +104,6 @@ impl Ppu {
 
       long_sprites: false,
       generate_interrupt: false,
-      should_interrupt: false,
 
       grey_scale_mode: false,
       show_sprites: false,
@@ -114,11 +116,17 @@ impl Ppu {
 
       data_address_increment: 0,
       picture_buffer: vec![vec![Color::MAGENTA; VISIBLE_SCANLINES]; SCANLINE_VISIBLE_DOTS],
+
+      cpu: None,
     }
   }
 
-  pub fn picture_bus(&mut self) -> Rc<RefCell<PictureBus>> {
-    self.bus.clone()
+  pub fn set_cpu(&mut self, cpu: Rc<RefCell<Cpu>>) {
+    self.cpu = Some(cpu);
+  }
+
+  pub fn set_mapper_for_bus(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
+    self.bus.set_mapper(mapper);
   }
 
   pub fn reset(&mut self) {
@@ -147,12 +155,6 @@ impl Ppu {
 
     self.scanline_sprites.reserve(8);
     self.scanline_sprites.resize(0, 0);
-  }
-
-  pub fn check_and_reset_interrupt(&mut self) -> bool {
-    let ret = self.should_interrupt;
-    self.should_interrupt = false;
-    ret
   }
 
   pub fn step(&mut self) {
@@ -218,7 +220,6 @@ impl Ppu {
           self.scanline_sprites.push(i as Byte);
           if self.scanline_sprites.len() >= 8 {
             // 0..7
-            // info!("{:#?}", self.scanline_sprites);
             break;
           }
         }
@@ -227,7 +228,7 @@ impl Ppu {
       self.cycle = 0;
     }
 
-    if self.scanline as usize >= VISIBLE_SCANLINES {
+    if self.scanline >= VISIBLE_SCANLINES {
       self.pipeline_state = PipelineState::PostRender;
     }
   }
@@ -248,7 +249,7 @@ impl Ppu {
         // Fetch tile
         // Mask off fine y
         let mut addr = 0x2000 | (self.data_address & 0x0FFF);
-        let tile = self.bus.borrow().read(addr) as Address;
+        let tile = self.bus.read(addr) as Address;
 
         // Fetch pattern
         // Each pattern occupies 16 bytes, so multiply by 16
@@ -258,9 +259,9 @@ impl Ppu {
         addr |= (self.background_page as u16) << 12;
         // Get the corresponding bit determined by (8 - x_fine)
         // from the right bit 0 of palette entry
-        bg_color = (self.bus.borrow().read(addr) >> (7 ^ x_fine)) & 1;
+        bg_color = (self.bus.read(addr) >> (7 ^ x_fine)) & 1;
         // bit 1
-        bg_color |= (self.bus.borrow().read(addr + 8) >> (7 ^ x_fine) & 1) << 1;
+        bg_color |= (self.bus.read(addr + 8) >> (7 ^ x_fine) & 1) << 1;
 
         // flag used to calculate final pixel with the sprite pixel
         bg_opaque = bg_color != 0;
@@ -270,7 +271,7 @@ impl Ppu {
           | (self.data_address & 0x0C00)
           | ((self.data_address >> 4) & 0x38)
           | ((self.data_address >> 2) & 0x07);
-        let attribute = self.bus.borrow().read(addr);
+        let attribute = self.bus.read(addr);
         let shift = (self.data_address >> 4) & 4 | (self.data_address & 2);
         // Extract and set the upper two bits for the color
         bg_color |= ((attribute >> shift) & 0x3) << 2;
@@ -333,13 +334,13 @@ impl Ppu {
         }
 
         // bit 0 of palette entry
-        spr_color |= (self.bus.borrow().read(addr) >> x_shift) & 1;
+        spr_color |= (self.bus.read(addr) >> x_shift) & 1;
         // bit 1
-        spr_color |= ((self.bus.borrow().read(addr + 8) >> x_shift) & 1) << 1;
+        spr_color |= ((self.bus.read(addr + 8) >> x_shift) & 1) << 1;
 
         spr_opaque = spr_color != 0;
         if !spr_opaque {
-          assert_eq!(spr_color, 0);
+          // assert_eq!(spr_color, 0);
           continue;
         }
 
@@ -364,7 +365,7 @@ impl Ppu {
     };
 
     self.picture_buffer[x as usize][y as usize] =
-      Color::from(COLORS[self.bus.borrow().read_palette(palette_addr) as usize]);
+      Color::from(COLORS[self.bus.read_palette(palette_addr) as usize]);
   }
 
   fn render_step2(&mut self) {
@@ -411,7 +412,12 @@ impl Ppu {
     if self.cycle == 1 && self.scanline == (VISIBLE_SCANLINES + 1) {
       self.vblank = true;
       if self.generate_interrupt {
-        self.should_interrupt = true;
+        self
+          .cpu
+          .as_ref()
+          .unwrap()
+          .borrow_mut()
+          .interrupt(InterruptType::NMI);
       }
     }
 
@@ -435,12 +441,8 @@ impl Ppu {
   }
 
   pub fn get_data(&mut self) -> Byte {
-    let mut data = self.bus.borrow().read(self.data_address);
+    let mut data = self.bus.read(self.data_address);
     self.data_address += self.data_address_increment;
-    // println!(
-    //   "data {:02X}, databuffer {:02X}, address {:04X}",
-    //   data, self.data_buffer, self.data_address
-    // );
     // Reads are delayed by one byte/read when address is in the range
     if self.data_address < 0x3F00 {
       std::mem::swap(&mut self.data_buffer, &mut data);
@@ -476,18 +478,19 @@ impl Ppu {
   }
 
   pub fn set_data(&mut self, value: Byte) {
-    self.bus.borrow_mut().write(self.data_address, value);
+    self.bus.write(self.data_address, value);
     self.data_address += self.data_address_increment;
   }
 
   pub fn set_scroll(&mut self, scroll: Byte) {
+    let scroll = scroll as Address;
     if self.first_write {
       self.temp_address &= !0x001F;
-      self.temp_address |= (scroll as Address >> 3) & 0x001F;
-      self.fine_x_scroll = scroll & 0x7;
+      self.temp_address |= (scroll >> 3) & 0x001F;
+      self.fine_x_scroll = scroll as Byte & 0x7;
     } else {
       self.temp_address &= !0x73e0;
-      self.temp_address |= (scroll as Address & 0x7) << 12 | ((scroll as Address & 0xF8) << 2);
+      self.temp_address |= (scroll & 0x7) << 12 | ((scroll & 0xF8) << 2);
     }
     self.first_write = !self.first_write;
   }
@@ -498,18 +501,6 @@ impl Ppu {
     self.hide_edge_sprites = !bit_eq(mask, 0x4);
     self.show_background = bit_eq(mask, 0x8);
     self.show_sprites = bit_eq(mask, 0x10);
-    // println!(
-    //   "after set mask grey_scale_mode: {},
-    //   hide_edge_background: {},
-    //   hide_edge_sprites: {},
-    //   show_background:{},
-    //   show_sprites:{}",
-    //   self.grey_scale_mode,
-    //   self.hide_edge_background,
-    //   self.hide_edge_sprites,
-    //   self.show_background,
-    //   self.show_sprites
-    // );
   }
 
   pub fn control(&mut self, ctrl: Byte) {
@@ -539,7 +530,6 @@ impl Ppu {
   }
 
   pub unsafe fn do_dma(&mut self, page: *const Byte) {
-    // info!("dma at {}", self.sprite_data_address);
     for i in self.sprite_data_address..256 {
       self.sprite_memory[i] = *page.add(i);
     }

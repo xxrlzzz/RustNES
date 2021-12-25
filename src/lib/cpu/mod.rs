@@ -27,12 +27,6 @@ mod flag_const {
   use crate::types::*;
   // 7 6 5 4 3 2 1 0
   // N V - B D I Z C
-  // const negative_offset: Byte = 7;
-  // const overflow_offset: Byte = 6;
-  // const decimal_offset: Byte = 3;
-  // const interrupt_offset: Byte = 2;
-  // const zero_offset: Byte = 1;
-  // const carry_offset: Byte = 0;
 
   pub const NEGATIVE: Byte = 1 << 7;
   pub const OVERFLOW: Byte = 1 << 6;
@@ -212,8 +206,10 @@ impl Cpu {
   }
 
   fn read_address(&self, addr: Address) -> Address {
-    let res = self.main_bus.borrow_mut().read_addr(addr);
-    res | (self.main_bus.borrow_mut().read_addr(addr + 1) << 8)
+    let mut bus = self.main_bus.borrow_mut();
+    bus.read_addr(addr) | bus.read_addr(addr + 1) << 8
+    // let res = self.main_bus.borrow_mut().read_addr(addr);
+    // res | (self.main_bus.borrow_mut().read_addr(addr + 1) << 8)
   }
 
   fn read_and_forward_pc(&mut self) -> Address {
@@ -381,7 +377,7 @@ impl Cpu {
     // later)
     let mut branch = bit_eq(opcode, BRANCH_CONDITION_MASH);
     // set branch to true if the given condition is met by the given flag
-    // We use xnor here, it is true if either both operands are true or false
+    // We use xor here, it is true if either both operands are true or false
     match opcode >> BRANCH_ON_FLAG_SHIFT {
       branch_on_flag::NEGATIVE => branch = !(branch ^ self.flag.get_at(flag_const::NEGATIVE)),
       branch_on_flag::OVERFLOW => branch = !(branch ^ self.flag.get_at(flag_const::OVERFLOW)),
@@ -438,19 +434,16 @@ impl Cpu {
           self.set_zn(self.r_a);
         }
         operation1::ADC => {
-          let sum = (self.r_a as Address)
-            + (operand as Address)
-            + (self.flag.get_at(flag_const::CARRY) as Address);
+          let r_a = self.r_a as Address;
+          let operand = operand as Address;
+          let sum = r_a + operand + (self.flag.get_at(flag_const::CARRY) as Address);
           // Carry forward or UNSIGNED overflow
           self.flag.set_at(flag_const::CARRY, bit_eq(sum, 0x100));
           // SIGNED overflow, would only happen if the sign of sum is
           // different from BOTH the operands
           self.flag.set_at(
             flag_const::OVERFLOW,
-            bit_eq(
-              (self.r_a as Address ^ sum) & (operand as Address ^ sum as Address),
-              0x80,
-            ),
+            bit_eq((r_a ^ sum) & (operand ^ sum), 0x80),
           );
           self.r_a = sum as Byte;
           self.set_zn(self.r_a);
@@ -460,32 +453,28 @@ impl Cpu {
           self.set_zn(self.r_a);
         }
         operation1::SBC => {
-          let subtrahend = operand as Address;
+          let r_a = self.r_a as Address;
+          let operand = operand as Address;
           // High carry means "no borrow", thus negate and subtract
-          let diff = (self.r_a as Address)
-            .overflowing_sub(subtrahend)
+          let diff = (r_a)
+            .overflowing_sub(operand)
             .0
             .overflowing_sub(!self.flag.get_at(flag_const::CARRY) as Address)
             .0;
           // If the ninth bit is 1, the resulting number is negative =>
           // borrow => low carry
           self.flag.set_at(flag_const::CARRY, !bit_eq(diff, 0x100));
-          // Same as ADC, except instead of the subtrahend,
+          // Same as ADC, except instead of the operand,
           // substitute with it's one complement
           self.flag.set_at(
             flag_const::OVERFLOW,
-            bit_eq(
-              (self.r_a as Address ^ diff) & (!subtrahend ^ diff as Address),
-              0x80,
-            ),
+            bit_eq((r_a ^ diff) & (!operand ^ diff), 0x80),
           );
           self.r_a = diff as Byte;
           self.set_zn(self.r_a);
         }
         operation1::CMP => {
-          let diff = (self.r_a as Address).overflowing_sub(operand as Address);
-          self.flag.set_at(flag_const::CARRY, !diff.1);
-          self.set_zn(diff.0 as Byte);
+          self.compare(self.r_a, operand);
         }
         _ => return false,
       }
@@ -528,24 +517,22 @@ impl Cpu {
         self.set_zn(self.r_x);
       }
       operation2::DEC => {
-        let r = self
-          .main_bus
-          .borrow_mut()
-          .read(location)
-          .overflowing_sub(1)
-          .0;
+        let r = {
+          let mut bus = self.main_bus.borrow_mut();
+          let r = bus.read(location).overflowing_sub(1).0;
+          bus.write(location, r);
+          r
+        };
         self.set_zn(r);
-        self.main_bus.borrow_mut().write(location, r);
       }
       operation2::INC => {
-        let r = self
-          .main_bus
-          .borrow_mut()
-          .read(location)
-          .overflowing_add(1)
-          .0;
+        let r = {
+          let mut bus = self.main_bus.borrow_mut();
+          let r = bus.read(location).overflowing_add(1).0;
+          bus.write(location, r);
+          r
+        };
         self.set_zn(r);
-        self.main_bus.borrow_mut().write(location, r);
       }
       _ => return false,
     }
@@ -580,16 +567,12 @@ impl Cpu {
         self.set_zn(self.r_y);
       }
       operation0::CPY => {
-        let val = self.main_bus.borrow_mut().read_addr(location);
-        let diff = (self.r_y as Address).overflowing_sub(val).0;
-        self.flag.set_at(flag_const::CARRY, !bit_eq(diff, 0x100));
-        self.set_zn(diff as Byte);
+        let val = self.main_bus.borrow_mut().read(location);
+        self.compare(self.r_y, val);
       }
       operation0::CPX => {
-        let val = self.main_bus.borrow_mut().read_addr(location);
-        let diff = (self.r_x as Address).overflowing_sub(val).0;
-        self.flag.set_at(flag_const::CARRY, !bit_eq(diff, 0x100));
-        self.set_zn(diff as Byte);
+        let val = self.main_bus.borrow_mut().read(location);
+        self.compare(self.r_x, val);
       }
       _ => return false,
     }
@@ -604,8 +587,9 @@ impl Cpu {
     let location = match addr_mode {
       addr_mode1::INDEXED_INDIRECT_X => {
         let zero_addr = self.r_x as Address + self.read_and_forward_pc();
-        let ret = self.main_bus.borrow_mut().read_addr(zero_addr & 0xFF);
-        ret | self.main_bus.borrow_mut().read_addr((zero_addr + 1) & 0xFF) << 8
+        let mut bus = self.main_bus.borrow_mut();
+        let ret = bus.read_addr(zero_addr & 0xFF);
+        ret | bus.read_addr((zero_addr + 1) & 0xFF) << 8
       }
       addr_mode1::ZERO_PAGE => self.read_and_forward_pc(),
       addr_mode1::IMMEDIATE => {
@@ -627,9 +611,9 @@ impl Cpu {
         location + self.r_y as Address
       }
       // Address wraps around in the zero page
-      addr_mode1::INDEXEDX => (self.read_and_forward_pc() + self.r_x as Address) & 0xFF,
-      addr_mode1::ABSOLUTEY => self.read_addr_absolute(self.r_y as Address, check_page_crossed),
-      addr_mode1::ABSOLUTEX => self.read_addr_absolute(self.r_x as Address, check_page_crossed),
+      addr_mode1::INDEXED_X => (self.read_and_forward_pc() + self.r_x as Address) & 0xFF,
+      addr_mode1::ABSOLUTE_Y => self.read_addr_absolute(self.r_y as Address, check_page_crossed),
+      addr_mode1::ABSOLUTE_X => self.read_addr_absolute(self.r_x as Address, check_page_crossed),
       _ => return None,
     };
     Some(location)
@@ -714,6 +698,12 @@ impl Cpu {
       self.main_bus.borrow_mut().write(location, *operand);
     }
     *operand
+  }
+
+  fn compare(&mut self, a: Byte, b: Byte) {
+    let diff = a.overflowing_sub(b);
+    self.flag.set_at(flag_const::CARRY, !diff.1);
+    self.set_zn(diff.0 as Byte);
   }
 }
 

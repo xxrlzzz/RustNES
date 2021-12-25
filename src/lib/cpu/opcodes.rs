@@ -72,9 +72,9 @@ pub mod addr_mode1 {
   pub const IMMEDIATE: u8 = 2;
   pub const ABSOLUTE: u8 = 3;
   pub const INDIRECT_Y: u8 = 4;
-  pub const INDEXEDX: u8 = 5;
-  pub const ABSOLUTEY: u8 = 6;
-  pub const ABSOLUTEX: u8 = 7;
+  pub const INDEXED_X: u8 = 5;
+  pub const ABSOLUTE_Y: u8 = 6;
+  pub const ABSOLUTE_X: u8 = 7;
 }
 
 pub mod operation2 {

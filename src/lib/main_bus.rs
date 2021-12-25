@@ -23,7 +23,6 @@ pub const APU_ADDR: IORegister = 0x4015; // Add.
 pub const JOY1: IORegister = 0x4016;
 pub const JOY2: IORegister = 0x4017;
 
-// #[derive(Copy, Clone)]
 pub struct MainBus {
   ram: Vec<Byte>,
   ext_ram: Vec<Byte>,

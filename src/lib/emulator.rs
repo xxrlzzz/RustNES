@@ -2,12 +2,13 @@ use log::info;
 use sfml::graphics::{Color, RenderTarget, RenderWindow};
 use sfml::window::{ContextSettings, Event, Key, Style, VideoMode};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::cartridge::Cartridge;
-use crate::cpu::{Cpu, InterruptType};
+use crate::cpu::Cpu;
 use crate::main_bus::*;
 use crate::mapper::factory;
 use crate::picture_bus::PictureBus;
@@ -25,17 +26,20 @@ pub struct Emulator {
   screen_scale: f32,
   emulator_screen: Rc<RefCell<VirtualScreen>>,
   window: RenderWindow,
+
+  matrix: HashMap<String, u128>,
 }
 
 impl Emulator {
   pub fn new() -> Self {
     let emulator_screen = Rc::new(RefCell::new(VirtualScreen::new()));
+    let main_bus = Rc::new(RefCell::new(MainBus::new()));
+    let cpu = Rc::new(RefCell::new(Cpu::new(main_bus.clone())));
     let ppu = Rc::new(RefCell::new(Ppu::new(
       PictureBus::new(),
       emulator_screen.clone(),
     )));
-    let main_bus = Rc::new(RefCell::new(MainBus::new()));
-    let cpu = Rc::new(RefCell::new(Cpu::new(main_bus.clone())));
+    ppu.clone().borrow_mut().set_cpu(cpu.clone());
     main_bus.clone().borrow_mut().set_ppu(ppu.clone());
 
     let video_mode = VideoMode::new(
@@ -55,23 +59,35 @@ impl Emulator {
         video_style,
         &ContextSettings::default(),
       ),
+      matrix: HashMap::default(),
     }
   }
 
   pub fn step(&mut self) {
+    let mut now = Instant::now();
     self.ppu.borrow_mut().step();
-    if self.ppu.borrow_mut().check_and_reset_interrupt() {
-      self.cpu.borrow_mut().interrupt(InterruptType::NMI);
-    }
     self.ppu.borrow_mut().step();
-    if self.ppu.borrow_mut().check_and_reset_interrupt() {
-      self.cpu.borrow_mut().interrupt(InterruptType::NMI);
-    }
     self.ppu.borrow_mut().step();
-    if self.ppu.borrow_mut().check_and_reset_interrupt() {
-      self.cpu.borrow_mut().interrupt(InterruptType::NMI);
+    let mut nxt = Instant::now();
+    {
+      let milliseconds = (nxt - now).as_nanos();
+      self
+        .matrix
+        .entry(String::from("ppu"))
+        .and_modify(|e| *e += milliseconds)
+        .or_insert(milliseconds);
+      now = nxt;
     }
     self.cpu.borrow_mut().step();
+    nxt = Instant::now();
+    {
+      let milliseconds = (nxt - now).as_nanos();
+      self
+        .matrix
+        .entry(String::from("cpu"))
+        .and_modify(|e| *e += milliseconds)
+        .or_insert(milliseconds);
+    }
   }
 
   pub fn run(&mut self, rom_path: &str) {
@@ -91,12 +107,7 @@ impl Emulator {
       .main_bus()
       .borrow_mut()
       .set_mapper(mapper.clone());
-    self
-      .ppu
-      .borrow_mut()
-      .picture_bus()
-      .borrow_mut()
-      .set_mapper(mapper.clone());
+    self.ppu.borrow_mut().set_mapper_for_bus(mapper.clone());
     self.cpu.borrow_mut().reset();
     self.ppu.borrow_mut().reset();
 
@@ -165,21 +176,26 @@ impl Emulator {
         cycle_timer = now;
 
         let mut iter_time = 0;
-        while elapsed_time > CPU_CYCLE_DURATION {
+        while elapsed_time > CPU_CYCLE_DURATION && iter_time < 1788908 {
           self.step();
           elapsed_time -= CPU_CYCLE_DURATION;
           iter_time += 1;
         }
-
+        let start = Instant::now();
         self
           .window
           .draw(self.emulator_screen.borrow_mut().deref_mut());
         self.window.display();
+        let end = Instant::now();
         info!(
-          "last frame toke {:?} for {} times.",
+          "last frame toke {:?} for {} times. ppu total cost:{}, cpu total cost:{}, render cost: {}",
           Instant::now() - now,
-          iter_time
+          iter_time,
+          self.matrix["ppu"] / 1000000,
+          self.matrix["cpu"] / 1000000,
+          (end-start).as_millis(),
         );
+        self.matrix.clear();
       } else {
         sfml::system::sleep(sfml::system::Time::milliseconds(1000 / 60));
       }
