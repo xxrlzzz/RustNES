@@ -1,10 +1,7 @@
-mod lib;
-use lib::*;
 
 use clap::Parser;
 
-#[macro_use]
-extern crate ini;
+use rust_nes::{logger, emulator, controller};
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -17,12 +14,12 @@ struct Args {
 }
 
 fn main() {
-  match crate::logger::init() {
+  match logger::init() {
     Err(_) => return,
     Ok(_) => {}
   };
   let args = Args::parse();
-  let mut emulator = lib::emulator::Emulator::new();
+  let mut emulator = emulator::Emulator::new();
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
   emulator.set_keys(p1_key, p2_key);
   emulator.run(&args.rom_path);

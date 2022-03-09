@@ -38,7 +38,7 @@ mod test {
     println!("{:?}", Instant::now() - start);
     start = Instant::now();
     for i in 1..1788908 {
-      (1 & i) != 0;
+      let _ = (1 & i) != 0;
     }
     println!("{:?}", Instant::now() - start);
   }

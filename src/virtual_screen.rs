@@ -1,7 +1,7 @@
-use sfml::graphics::{Color, Drawable, RenderStates, RenderTarget, VertexArray};
+use sfml::graphics::{Color, Drawable, RenderStates, RenderTarget, VertexArray, PrimitiveType};
 use sfml::system::{Vector2f, Vector2u};
 
-use crate::ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
+use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
 
 const TWO_TRIANGLE_POINTS: usize = 6;
 
@@ -25,7 +25,7 @@ impl VirtualScreen {
     self.screen_size = Vector2u::new(w, h);
     self
       .vertices
-      .set_primitive_type(sfml::graphics::PrimitiveType::TRIANGLES);
+      .set_primitive_type(PrimitiveType::TRIANGLES);
     self.pixel_size = pixel_size;
 
     let vec_right = Vector2f::new(pixel_size, 0.);

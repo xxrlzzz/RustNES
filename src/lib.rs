@@ -11,3 +11,6 @@ pub mod ppu;
 pub mod types;
 pub mod utils;
 pub mod virtual_screen;
+
+#[macro_use]
+extern crate ini;

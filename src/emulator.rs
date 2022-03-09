@@ -27,7 +27,7 @@ pub struct Emulator {
   emulator_screen: Rc<RefCell<VirtualScreen>>,
   window: RenderWindow,
 
-  matrix: HashMap<String, u128>,
+  matrix: HashMap<&'static str, u128>,
 }
 
 impl Emulator {
@@ -65,15 +65,16 @@ impl Emulator {
 
   pub fn step(&mut self) {
     let mut now = Instant::now();
-    self.ppu.borrow_mut().step();
-    self.ppu.borrow_mut().step();
-    self.ppu.borrow_mut().step();
+    let mut ppu = self.ppu.borrow_mut();
+    ppu.step();
+    ppu.step();
+    ppu.step();
     let mut nxt = Instant::now();
     {
       let milliseconds = (nxt - now).as_nanos();
       self
         .matrix
-        .entry(String::from("ppu"))
+        .entry("ppu")
         .and_modify(|e| *e += milliseconds)
         .or_insert(milliseconds);
       now = nxt;
@@ -84,7 +85,7 @@ impl Emulator {
       let milliseconds = (nxt - now).as_nanos();
       self
         .matrix
-        .entry(String::from("cpu"))
+        .entry("cpu")
         .and_modify(|e| *e += milliseconds)
         .or_insert(milliseconds);
     }

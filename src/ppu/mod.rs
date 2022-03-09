@@ -1,4 +1,3 @@
-use log::info;
 use sfml::graphics::Color;
 use std::cell::RefCell;
 use std::rc::Rc;

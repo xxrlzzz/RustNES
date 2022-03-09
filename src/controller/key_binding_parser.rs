@@ -240,7 +240,7 @@ pub fn parse_key_binding(file: &str) -> (Vec<Key>, Vec<Key>) {
 mod test {
   #[test]
   fn parse_test() {
-    let (player1, player2) =
+    let (player1, _) =
       crate::controller::key_binding_parser::parse_key_binding("./assets/keybindings.ini");
     for key in player1 {
       print!("{:?} ", key);
