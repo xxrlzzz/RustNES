@@ -1,6 +1,6 @@
 use crate::cartridge::{Cartridge, BANK_SIZE};
+use crate::common::types::*;
 use crate::mapper::Mapper;
-use crate::types::*;
 use log::warn;
 
 pub struct CnRom {

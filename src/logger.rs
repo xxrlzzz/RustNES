@@ -1,4 +1,4 @@
-use log::{Level, LevelFilter, Metadata, SetLoggerError};
+use log::{Level, Metadata, SetLoggerError};
 
 struct SimpleLogger {
   level: Level,
@@ -25,13 +25,14 @@ impl log::Log for SimpleLogger {
 }
 
 pub fn init() -> Result<(), SetLoggerError> {
-  static LOGGER: SimpleLogger = SimpleLogger {
-    // file_path: String::from("log.txt"),
-    // file: Option::None,
-    level: Level::Info,
-  };
-
-  log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Info))
+  // static LOGGER: SimpleLogger = SimpleLogger {
+  //   // file_path: String::from("log.txt"),
+  //   // file: Option::None,
+  //   level: Level::Info,
+  // };
+  // log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Info))
+  let logger = SimpleLogger { level: Level::Info };
+  log::set_boxed_logger(Box::new(logger))
 }
 
 //TODO:

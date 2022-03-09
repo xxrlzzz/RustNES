@@ -1,6 +1,6 @@
 use crate::cartridge::Cartridge;
+use crate::common::types::*;
 use crate::mapper::Mapper;
-use crate::types::*;
 use log::warn;
 use std::vec::Vec;
 

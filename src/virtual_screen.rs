@@ -1,4 +1,4 @@
-use sfml::graphics::{Color, Drawable, RenderStates, RenderTarget, VertexArray, PrimitiveType};
+use sfml::graphics::{Color, Drawable, PrimitiveType, RenderStates, RenderTarget, VertexArray};
 use sfml::system::{Vector2f, Vector2u};
 
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
@@ -23,9 +23,7 @@ impl VirtualScreen {
   pub fn create(&mut self, w: u32, h: u32, pixel_size: f32, color: Color) {
     self.vertices.resize((w * h) as usize * TWO_TRIANGLE_POINTS);
     self.screen_size = Vector2u::new(w, h);
-    self
-      .vertices
-      .set_primitive_type(PrimitiveType::TRIANGLES);
+    self.vertices.set_primitive_type(PrimitiveType::TRIANGLES);
     self.pixel_size = pixel_size;
 
     let vec_right = Vector2f::new(pixel_size, 0.);
@@ -80,6 +78,7 @@ impl VirtualScreen {
   }
 
   pub fn set_picture(&mut self, picture_buffer: &Vec<Vec<Color>>) {
+    // TODO better copy method.
     for x in 0..SCANLINE_VISIBLE_DOTS {
       for y in 0..VISIBLE_SCANLINES {
         self.set_pixel(x, y, picture_buffer[x][y]);

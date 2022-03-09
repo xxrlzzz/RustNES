@@ -3,13 +3,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
-use crate::cpu::{Cpu, InterruptType};
+mod palette_colors;
+
+use crate::bus::message_bus::{Message, MessageBus};
+use crate::bus::picture_bus::PictureBus;
+use crate::common::bit_eq;
+use crate::common::types::*;
 use crate::mapper::Mapper;
-use crate::palette_colors::COLORS;
-use crate::picture_bus::PictureBus;
-use crate::types::*;
-use crate::utils::bit_eq;
-use crate::virtual_screen::VirtualScreen;
 
 #[derive(Copy, Clone)]
 enum PipelineState {
@@ -36,7 +36,6 @@ const FRAME_END_SCANLINE: usize = 261;
 // pixel processing unit
 pub struct Ppu {
   bus: PictureBus,
-  screen: Rc<RefCell<VirtualScreen>>,
   sprite_memory: Vec<Byte>,
   scanline_sprites: Vec<Byte>,
 
@@ -74,14 +73,13 @@ pub struct Ppu {
   data_address_increment: Address,
   picture_buffer: Vec<Vec<Color>>,
 
-  cpu: Option<Rc<RefCell<Cpu>>>,
+  message_bus: Rc<RefCell<MessageBus>>,
 }
 
 impl Ppu {
-  pub fn new(pic_bus: PictureBus, screen: Rc<RefCell<VirtualScreen>>) -> Self {
+  pub fn new(pic_bus: PictureBus, message_bus: Rc<RefCell<MessageBus>>) -> Self {
     Self {
       bus: pic_bus,
-      screen: screen,
       sprite_memory: vec![0; 64 * 4],
       scanline_sprites: vec![],
 
@@ -116,12 +114,8 @@ impl Ppu {
       data_address_increment: 0,
       picture_buffer: vec![vec![Color::MAGENTA; VISIBLE_SCANLINES]; SCANLINE_VISIBLE_DOTS],
 
-      cpu: None,
+      message_bus: message_bus,
     }
-  }
-
-  pub fn set_cpu(&mut self, cpu: Rc<RefCell<Cpu>>) {
-    self.cpu = Some(cpu);
   }
 
   pub fn set_mapper_for_bus(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
@@ -364,7 +358,7 @@ impl Ppu {
     };
 
     self.picture_buffer[x as usize][y as usize] =
-      Color::from(COLORS[self.bus.read_palette(palette_addr) as usize]);
+      Color::from(palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize]);
   }
 
   fn render_step2(&mut self) {
@@ -403,7 +397,10 @@ impl Ppu {
       self.scanline += 1;
       self.cycle = 0;
       self.pipeline_state = PipelineState::VerticalBlank;
-      self.screen.borrow_mut().set_picture(&self.picture_buffer);
+      self
+        .message_bus
+        .borrow_mut()
+        .push(Message::PpuRender(self.picture_buffer.clone()));
     }
   }
 
@@ -411,12 +408,7 @@ impl Ppu {
     if self.cycle == 1 && self.scanline == (VISIBLE_SCANLINES + 1) {
       self.vblank = true;
       if self.generate_interrupt {
-        self
-          .cpu
-          .as_ref()
-          .unwrap()
-          .borrow_mut()
-          .interrupt(InterruptType::NMI);
+        self.message_bus.borrow_mut().push(Message::CpuInterrupt);
       }
     }
 

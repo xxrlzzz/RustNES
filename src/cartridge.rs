@@ -1,5 +1,5 @@
-use crate::types::*;
-use crate::utils::bit_eq;
+use crate::common::bit_eq;
+use crate::common::types::*;
 use log::{error, info};
 use std::fs::File;
 use std::io::Read;

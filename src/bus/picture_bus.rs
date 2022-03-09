@@ -3,8 +3,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
+use crate::common::types::*;
 use crate::mapper::Mapper;
-use crate::types::*;
 
 mod name_table_mirroring {
   pub const HORIZONTAL: u8 = 0;

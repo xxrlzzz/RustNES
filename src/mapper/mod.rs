@@ -3,7 +3,7 @@ pub mod factory;
 pub mod n_rom;
 pub mod ux_rom;
 
-use crate::types::*;
+use crate::common::types::*;
 
 pub trait Mapper {
   fn write_prg(&mut self, addr: Address, value: Byte);

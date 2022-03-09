@@ -1,7 +1,7 @@
 use sfml::window::Key;
 
-use crate::types::Byte;
-use crate::utils::bit_eq;
+use crate::common::bit_eq;
+use crate::common::types::Byte;
 
 pub mod key_binding_parser;
 

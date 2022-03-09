@@ -1,7 +1,6 @@
-
 use clap::Parser;
 
-use rust_nes::{logger, emulator, controller};
+use rust_nes::{controller, emulator, logger};
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]

@@ -3,10 +3,10 @@ use sfml::window::Key;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::common::types::*;
 use crate::controller::Controller;
 use crate::mapper::Mapper;
 use crate::ppu::Ppu;
-use crate::types::*;
 
 type IORegister = u16;
 
@@ -27,7 +27,7 @@ pub struct MainBus {
   ram: Vec<Byte>,
   ext_ram: Vec<Byte>,
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
-  ppu: Option<Rc<RefCell<Ppu>>>,
+  ppu: Rc<RefCell<Ppu>>,
   control1: Controller,
   control2: Controller,
 
@@ -35,21 +35,17 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new() -> Self {
+  pub fn new(ppu: Rc<RefCell<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
       mapper: None,
-      ppu: None,
+      ppu: ppu,
       control1: Controller::new(),
       control2: Controller::new(),
 
       skip_dma_cycles: false,
     }
-  }
-
-  pub fn set_ppu(&mut self, ppu: Rc<RefCell<Ppu>>) {
-    self.ppu = Some(ppu);
   }
 
   pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
@@ -76,28 +72,18 @@ impl MainBus {
     } else if addr < 0x4020 {
       let mapped_addr = if addr < 0x4000 {
         // PPU registers, mirrored
-        addr & 0x2007
+        addr & PPU_DATA
       } else {
         addr
       };
       match mapped_addr {
-        PPU_CTRL => self.ppu.as_ref().unwrap().borrow_mut().control(value),
-        PPU_MASK => self.ppu.as_ref().unwrap().borrow_mut().set_mask(value),
-        PPU_ADDR => self
-          .ppu
-          .as_ref()
-          .unwrap()
-          .borrow_mut()
-          .set_data_address(value),
-        OAM_ADDR => self
-          .ppu
-          .as_ref()
-          .unwrap()
-          .borrow_mut()
-          .set_oam_address(value),
-        PPU_SCROL => self.ppu.as_ref().unwrap().borrow_mut().set_scroll(value),
-        PPU_DATA => self.ppu.as_ref().unwrap().borrow_mut().set_data(value),
-        OAM_DATA => self.ppu.as_ref().unwrap().borrow_mut().set_oam_data(value),
+        PPU_CTRL => self.ppu.borrow_mut().control(value),
+        PPU_MASK => self.ppu.borrow_mut().set_mask(value),
+        PPU_ADDR => self.ppu.borrow_mut().set_data_address(value),
+        OAM_ADDR => self.ppu.borrow_mut().set_oam_address(value),
+        PPU_SCROL => self.ppu.borrow_mut().set_scroll(value),
+        PPU_DATA => self.ppu.borrow_mut().set_data(value),
+        OAM_DATA => self.ppu.borrow_mut().set_oam_data(value),
         JOY1 => {
           self.control1.strobe(value);
           self.control2.strobe(value);
@@ -107,7 +93,7 @@ impl MainBus {
           unsafe {
             let ptr = self.get_page_ptr(value);
             if let Some(ptr) = ptr {
-              self.ppu.as_ref().unwrap().borrow_mut().do_dma(ptr);
+              self.ppu.borrow_mut().do_dma(ptr);
             }
           }
         }
@@ -141,9 +127,9 @@ impl MainBus {
         addr
       };
       return match mapped_addr {
-        PPU_STATUS => self.ppu.as_ref().unwrap().borrow_mut().get_status(),
-        PPU_DATA => self.ppu.as_ref().unwrap().borrow_mut().get_data(),
-        OAM_ADDR => self.ppu.as_ref().unwrap().borrow().get_oam_data(),
+        PPU_STATUS => self.ppu.borrow_mut().get_status(),
+        PPU_DATA => self.ppu.borrow_mut().get_data(),
+        OAM_ADDR => self.ppu.borrow().get_oam_data(),
         JOY1 => self.control1.read(),
         JOY2 => self.control2.read(),
         _ => {

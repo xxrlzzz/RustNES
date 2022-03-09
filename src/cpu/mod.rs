@@ -3,11 +3,11 @@ use std::convert::Into;
 use std::rc::Rc;
 
 use self::opcodes::*;
-use crate::main_bus::MainBus;
+use crate::bus::main_bus::MainBus;
+use crate::common::bit_eq;
+use crate::common::types::*;
 use crate::ppu::SCANLINE_END_CYCLE_LENGTH;
-use crate::types::*;
-use crate::utils::bit_eq;
-use log::{info, warn};
+use log::{debug, warn};
 
 mod opcodes;
 
@@ -24,7 +24,7 @@ const DMC_CYCLES: u32 = 4;
 const INTERRUPT_CYCLES: u32 = 7;
 
 mod flag_const {
-  use crate::types::*;
+  use crate::common::types::*;
   // 7 6 5 4 3 2 1 0
   // N V - B D I Z C
 
@@ -228,28 +228,17 @@ impl Cpu {
     }
     // self.skip_cycles = 0;
     let psw = self.get_flag();
-    // info!(
-    //   "[CPU-STATUS] {:#x}:{:#x} A:{:#x}, X:{:#x}, Y:{:#x}, P:{:#x}, SP:{:#x}, CYC:{}",
-    //   self.r_pc,
-    //   self.main_bus.borrow_mut().read(self.r_pc),
-    //   self.r_a,
-    //   self.r_x,
-    //   self.r_y,
-    //   psw,
-    //   self.r_sp,
-    //   (self.cycles - 1) * 3 % SCANLINE_END_CYCLE_LENGTH
-    // );
-    // println!(
-    //   "{:4X}  {:02X}  A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{:3}",
-    //   self.r_pc,
-    //   self.main_bus.borrow_mut().read(self.r_pc),
-    //   self.r_a,
-    //   self.r_x,
-    //   self.r_y,
-    //   psw,
-    //   self.r_sp,
-    //   (self.cycles - 1) * 3 % SCANLINE_END_CYCLE_LENGTH
-    // );
+    debug!(
+      "[CPU-STATUS] {:#x}:{:#x} A:{:#x}, X:{:#x}, Y:{:#x}, P:{:#x}, SP:{:#x}, CYC:{}",
+      self.r_pc,
+      self.main_bus.borrow_mut().read(self.r_pc),
+      self.r_a,
+      self.r_x,
+      self.r_y,
+      psw,
+      self.r_sp,
+      (self.cycles - 1) * 3 % SCANLINE_END_CYCLE_LENGTH
+    );
 
     let opcode = self.read_and_forward_pc() as Byte;
 
@@ -709,7 +698,7 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
-  use crate::utils::bit_eq;
+  use crate::common::bit_eq;
   #[derive(Debug)]
   #[allow(dead_code)]
   enum Foo {
