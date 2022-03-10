@@ -1,6 +1,6 @@
 use clap::Parser;
 
-use rust_nes::{controller, emulator, logger};
+use rust_nes::{apu::portaudio_player::PortAudioPlayer, controller, emulator, logger};
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -20,6 +20,9 @@ fn main() {
   let args = Args::parse();
   let mut emulator = emulator::Emulator::new();
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
+  let mut player = PortAudioPlayer::new();
+  player.init().unwrap();
+
   emulator.set_keys(p1_key, p2_key);
   emulator.run(&args.rom_path);
 }

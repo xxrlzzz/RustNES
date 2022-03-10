@@ -11,6 +11,6 @@ Note due to the performance issue, you should run in release mode to get enough 
 
 ## TODO
 
-1. Audio support
+1. Audio support # DONE
 2. More Rom type support
 3. Pause/Resume/Save

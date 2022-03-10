@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use crate::apu::Apu;
 use crate::bus::main_bus::MainBus;
 use crate::bus::message_bus::{Message, MessageBus};
 use crate::bus::picture_bus::PictureBus;
@@ -22,6 +23,7 @@ const CPU_CYCLE_DURATION: Duration = Duration::from_nanos(559);
 
 pub struct Emulator {
   cpu: Cpu,
+  apu: Rc<RefCell<Apu>>,
   ppu: Rc<RefCell<Ppu>>,
   screen_scale: f32,
   emulator_screen: VirtualScreen,
@@ -39,17 +41,17 @@ impl Emulator {
       PictureBus::new(),
       message_bus.clone(),
     )));
-    let main_bus = Rc::new(RefCell::new(MainBus::new(ppu.clone())));
-    let cpu = Cpu::new(main_bus.clone());
-
+    let apu = Rc::new(RefCell::new(Apu::new()));
+    let main_bus = Rc::new(RefCell::new(MainBus::new(ppu.clone(), apu.clone())));
     let video_mode = VideoMode::new(
       (NES_VIDEO_WIDTH as f32 * DEFAULT_SCREEN_SCALE) as u32,
       (NES_VIDEO_HEIGHT as f32 * DEFAULT_SCREEN_SCALE) as u32,
       32,
     );
     Self {
-      cpu: cpu,
-      ppu: ppu,
+      cpu: Cpu::new(main_bus),
+      apu,
+      ppu,
       screen_scale: DEFAULT_SCREEN_SCALE,
       emulator_screen: VirtualScreen::new(),
       window: RenderWindow::new(
@@ -102,11 +104,18 @@ impl Emulator {
     }
     self.consume_message();
 
-    let nxt = Instant::now();
+    let mut nxt = Instant::now();
     self.sample_profile(now, nxt, "ppu");
+
     now = nxt;
     self.cpu.step();
-    self.sample_profile(now, Instant::now(), "cpu");
+    nxt = Instant::now();
+    self.sample_profile(now, nxt, "cpu");
+
+    now = nxt;
+    self.apu.borrow_mut().step();
+    nxt = Instant::now();
+    self.sample_profile(now, nxt, "apu");
   }
 
   fn init_rom(&mut self, rom_path: &str) {
@@ -146,11 +155,14 @@ impl Emulator {
     self.window.display();
     let end = Instant::now();
     debug!(
-      "last frame toke {:?} for {} times. ppu total cost:{}, cpu total cost:{}, render cost: {}",
+      "last frame toke {:?} for {} times. 
+        ppu total cost:{}, cpu total cost:{}, 
+        apu total cost:{}, render cost: {}",
       Instant::now() - start_timer,
       iter_time,
       self.matrix["ppu"] / 1000,
       self.matrix["cpu"] / 1000,
+      self.matrix["apu"] / 1000,
       (end - start).as_millis(),
     );
     self.matrix.clear();
@@ -158,6 +170,7 @@ impl Emulator {
 
   pub fn run(&mut self, rom_path: &str) {
     self.init_rom(rom_path);
+    self.apu.borrow_mut().start();
     let mut focus = true;
     let mut pause = false;
     let mut cycle_timer = Instant::now();
@@ -193,13 +206,20 @@ impl Emulator {
             }
           }
           Event::KeyReleased { code: Key::F4, .. } => {
-            log::set_max_level(log::LevelFilter::Info);
+            log::set_max_level(log::LevelFilter::Debug);
+            log::debug!("log switch into debug mode");
           }
           Event::KeyReleased { code: Key::F5, .. } => {
-            log::set_max_level(log::LevelFilter::Warn);
+            log::set_max_level(log::LevelFilter::Info);
+            log::info!("log switch into info mode");
           }
           Event::KeyReleased { code: Key::F6, .. } => {
+            log::set_max_level(log::LevelFilter::Warn);
+            log::warn!("log switch into warn mode");
+          }
+          Event::KeyReleased { code: Key::F7, .. } => {
             log::set_max_level(log::LevelFilter::Error);
+            log::error!("log switch into error mode");
           }
           _ => { /* Do nothing */ }
         }

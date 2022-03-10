@@ -1,3 +1,4 @@
+pub mod apu;
 pub mod bus;
 pub mod cartridge;
 pub mod common;
@@ -11,4 +12,6 @@ pub mod virtual_screen;
 
 #[macro_use]
 extern crate ini;
+#[macro_use]
+extern crate lazy_static;
 extern crate queues;

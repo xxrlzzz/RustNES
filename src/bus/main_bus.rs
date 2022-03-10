@@ -3,6 +3,7 @@ use sfml::window::Key;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::apu::Apu;
 use crate::common::types::*;
 use crate::controller::Controller;
 use crate::mapper::Mapper;
@@ -19,7 +20,7 @@ pub const PPU_SCROL: IORegister = 0x2005;
 pub const PPU_ADDR: IORegister = 0x2006;
 pub const PPU_DATA: IORegister = 0x2007;
 pub const OAM_DMA: IORegister = 0x4014;
-pub const APU_ADDR: IORegister = 0x4015; // Add.
+pub const APU_ADDR: IORegister = 0x4015;
 pub const JOY1: IORegister = 0x4016;
 pub const JOY2: IORegister = 0x4017;
 
@@ -28,6 +29,7 @@ pub struct MainBus {
   ext_ram: Vec<Byte>,
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
   ppu: Rc<RefCell<Ppu>>,
+  apu: Rc<RefCell<Apu>>,
   control1: Controller,
   control2: Controller,
 
@@ -35,12 +37,13 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new(ppu: Rc<RefCell<Ppu>>) -> Self {
+  pub fn new(ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
       mapper: None,
-      ppu: ppu,
+      ppu,
+      apu,
       control1: Controller::new(),
       control2: Controller::new(),
 
@@ -97,6 +100,9 @@ impl MainBus {
             }
           }
         }
+        0x4000..=0x4013 | JOY2 | APU_ADDR => {
+          self.apu.borrow_mut().write_register(mapped_addr, value)
+        }
         _ => {}
       };
     } else if addr < 0x6000 {
@@ -130,6 +136,7 @@ impl MainBus {
         PPU_STATUS => self.ppu.borrow_mut().get_status(),
         PPU_DATA => self.ppu.borrow_mut().get_data(),
         OAM_ADDR => self.ppu.borrow().get_oam_data(),
+        APU_ADDR => self.apu.borrow().read_status(),
         JOY1 => self.control1.read(),
         JOY2 => self.control2.read(),
         _ => {
@@ -137,7 +144,8 @@ impl MainBus {
           0
         }
       };
-    } else if addr < 0x6000 {
+    }
+    if addr < 0x6000 {
       warn!("Expansion ROM read attempted. This currently unsupported");
     } else if addr < 0x8000 {
       if self.mapper.as_ref().unwrap().borrow().has_extended_ram() {

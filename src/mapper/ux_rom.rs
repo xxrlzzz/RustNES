@@ -5,25 +5,23 @@ use log::warn;
 use std::vec::Vec;
 
 pub struct UxRom {
-  ues_character_ram: bool,
   select_chr: Address,
-  character_ram: Vec<Byte>,
+  character_ram: Option<Vec<Byte>>,
   cart: Cartridge,
 }
 
 impl UxRom {
   pub fn new(cart: Cartridge) -> Self {
-    let ues_character_ram = cart.get_vrom().len() == 0;
-    let mut ret = Self {
-      ues_character_ram: ues_character_ram,
-      select_chr: 0,
-      character_ram: vec![],
-      cart: cart,
+    let ram = if cart.get_vrom().len() == 0 {
+      Some(Vec::with_capacity(0x2000))
+    } else {
+      None
     };
-    if ues_character_ram {
-      ret.character_ram.reserve(0x2000);
+    Self {
+      select_chr: 0,
+      character_ram: ram,
+      cart,
     }
-    ret
   }
 
   fn read_last_bank(&self, addr: Address) -> Byte {
@@ -45,18 +43,16 @@ impl Mapper for UxRom {
   }
 
   fn read_chr(&self, addr: Address) -> Byte {
-    if self.ues_character_ram {
-      self.character_ram[addr as usize]
-    } else {
-      self.cart.get_vrom()[addr as usize]
+    match &self.character_ram {
+      Some(ram) => ram[addr as usize],
+      None => self.cart.get_vrom()[addr as usize],
     }
   }
 
   fn write_chr(&mut self, addr: Address, value: Byte) {
-    if self.ues_character_ram {
-      self.character_ram[addr as usize] = value;
-    } else {
-      warn!("Attempting to write read-only CHR memory on {:#x}", addr);
+    match &mut self.character_ram {
+      Some(ram) => ram[addr as usize] = value,
+      None => warn!("Attempting to write read-only CHR memory on {:#x}", addr),
     }
   }
 
