@@ -15,3 +15,4 @@ extern crate ini;
 #[macro_use]
 extern crate lazy_static;
 extern crate queues;
+extern crate serde;

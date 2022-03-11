@@ -1,4 +1,5 @@
 use log::info;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
@@ -14,6 +15,7 @@ mod name_table_mirroring {
   pub const ONE_SCREEN_HIGHER: u8 = 10;
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct PictureBus {
   ram: Vec<Byte>,
   // Indices where they start in RAM vector.
@@ -22,6 +24,7 @@ pub struct PictureBus {
   name_table2: usize,
   name_table3: usize,
   palette: Vec<Byte>,
+  #[serde(skip)]
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
 }
 

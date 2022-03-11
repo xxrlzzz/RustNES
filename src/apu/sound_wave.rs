@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::common::{
   bit_eq,
   types::{Address, Byte},
@@ -28,6 +30,7 @@ const DMC_TABLE: [Byte; 16] = [
   214, 190, 170, 160, 143, 127, 113, 107, 95, 80, 71, 64, 53, 42, 36, 27,
 ];
 
+#[derive(Serialize, Deserialize)]
 struct Envelope {
   enabled: bool,
   length_enabled: bool,
@@ -120,6 +123,7 @@ impl Envelope {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Pulse {
   channel: Byte,
   sweep_reload: bool,
@@ -241,6 +245,7 @@ impl Pulse {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Noise {
   timer_period: Address,
   timer_value: Address,
@@ -310,6 +315,7 @@ impl Noise {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Triangle {
   enabled: bool,
   length_enabled: bool,
@@ -402,6 +408,7 @@ impl Triangle {
   }
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct DMC {
   enabled: bool,
   value: Byte,

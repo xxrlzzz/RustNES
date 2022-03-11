@@ -1,8 +1,10 @@
-use log::debug;
+use log::{debug, error, info};
+use serde_json::json;
 use sfml::graphics::{Color, RenderTarget, RenderWindow};
 use sfml::window::{ContextSettings, Event, Key, Style, VideoMode};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::io::{Read, Write};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -24,7 +26,6 @@ pub struct Emulator {
   cpu: Cpu,
   apu: Rc<RefCell<Apu>>,
   ppu: Rc<RefCell<Ppu>>,
-  screen_scale: f32,
   emulator_screen: VirtualScreen,
   window: RenderWindow,
 
@@ -34,25 +35,33 @@ pub struct Emulator {
 }
 
 impl Emulator {
-  pub fn new(scale: f32) -> Self {
+  pub fn new(screen_scale: f32) -> Self {
     let message_bus = Rc::new(RefCell::new(MessageBus::new()));
     let ppu = Rc::new(RefCell::new(Ppu::new(
       PictureBus::new(),
       message_bus.clone(),
     )));
     let apu = Rc::new(RefCell::new(Apu::new()));
-    let main_bus = Rc::new(RefCell::new(MainBus::new(ppu.clone(), apu.clone())));
     let video_mode = VideoMode::new(
-      (NES_VIDEO_WIDTH as f32 * scale) as u32,
-      (NES_VIDEO_HEIGHT as f32 * scale) as u32,
+      (NES_VIDEO_WIDTH as f32 * screen_scale) as u32,
+      (NES_VIDEO_HEIGHT as f32 * screen_scale) as u32,
       32,
     );
+
+    let mut emulator_screen = VirtualScreen::new();
+
+    emulator_screen.create(
+      NES_VIDEO_WIDTH,
+      NES_VIDEO_HEIGHT,
+      screen_scale,
+      Color::WHITE,
+    );
+
     Self {
-      cpu: Cpu::new(main_bus),
+      cpu: Cpu::new(MainBus::new(ppu.clone(), apu.clone())),
       apu,
       ppu,
-      screen_scale: scale,
-      emulator_screen: VirtualScreen::new(),
+      emulator_screen,
       window: RenderWindow::new(
         video_mode,
         "NES-Simulator",
@@ -60,13 +69,52 @@ impl Emulator {
         &ContextSettings::default(),
       ),
       matrix: HashMap::default(),
-      message_bus: message_bus,
+      message_bus,
     }
   }
 
+  pub fn save(&self) -> Result<(), std::io::Error> {
+    let mut file = std::fs::File::create("save.json").unwrap();
+    let json = json!({
+      "cpu": serde_json::to_string(&self.cpu).unwrap(),
+      "apu": serde_json::to_string(&*self.apu.borrow()).unwrap(),
+      "ppu": serde_json::to_string(&*self.ppu.borrow()).unwrap(),
+      "main_bus" : self.cpu.main_bus().save(),
+    });
+    file.write_all(json.to_string().as_bytes())
+  }
+
+  pub fn load(&mut self) -> Result<(), std::io::Error> {
+    let mut file = std::fs::File::open("save.json").unwrap();
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+    let json_obj: serde_json::Value = serde_json::from_str(buffer.as_str()).unwrap();
+    let (ctl1, ctl2) = self.cpu.main_bus().control();
+    json_obj.get("cpu").map(|cpu| {
+      self.cpu = serde_json::from_str(cpu.as_str().unwrap()).unwrap();
+    });
+    json_obj.get("apu").map(|apu| {
+      let mut apu: Apu = serde_json::from_str(apu.as_str().unwrap()).unwrap();
+      apu.start();
+      *self.apu.borrow_mut() = apu;
+    });
+    json_obj.get("ppu").map(|ppu| {
+      let mut ppu: Ppu = serde_json::from_str(ppu.as_str().unwrap()).unwrap();
+      ppu.set_meeage_bus(self.message_bus.clone());
+      *self.ppu.borrow_mut() = ppu;
+    });
+    json_obj.get("main_bus").map(|main_bus| {
+      let main_bus = MainBus::load(main_bus, self.ppu.clone(), self.apu.clone(), ctl1, ctl2);
+      self.cpu.set_main_bus(main_bus);
+    });
+
+    Ok(())
+  }
+
   fn consume_message(&mut self) {
+    let mut message_bus = self.message_bus.borrow_mut();
     loop {
-      let message = self.message_bus.borrow_mut().peek();
+      let message = message_bus.peek();
       match message {
         None => break,
         Some(message) => {
@@ -78,7 +126,7 @@ impl Emulator {
               self.emulator_screen.set_picture(&frame);
             }
           };
-          self.message_bus.borrow_mut().pop();
+          message_bus.pop();
         }
       }
     }
@@ -123,20 +171,10 @@ impl Emulator {
       return;
     }
     let mapper = factory::create_mapper(cartridge);
-    self.cpu.main_bus().borrow_mut().set_mapper(mapper.clone());
+    self.cpu.main_bus_mut().set_mapper(mapper.clone());
     self.cpu.reset();
     self.ppu.borrow_mut().set_mapper_for_bus(mapper.clone());
     self.ppu.borrow_mut().reset();
-  }
-
-  fn init_screen(&mut self) {
-    self.window.set_vertical_sync_enabled(true);
-    self.emulator_screen.create(
-      NES_VIDEO_WIDTH,
-      NES_VIDEO_HEIGHT,
-      self.screen_scale,
-      Color::WHITE,
-    );
   }
 
   fn one_frame(&mut self, start_timer: Instant, elapsed_time: &mut Duration) {
@@ -166,7 +204,8 @@ impl Emulator {
 
   pub fn run(&mut self, rom_path: &str) {
     self.init_rom(rom_path);
-    self.init_screen();
+    self.window.set_vertical_sync_enabled(true);
+
     self.apu.borrow_mut().start();
     let mut focus = true;
     let mut pause = false;
@@ -189,6 +228,15 @@ impl Emulator {
           Event::LostFocus => {
             focus = false;
           }
+
+          Event::KeyPressed { code: Key::Z, .. } => match self.save() {
+            Ok(_) => info!("save success"),
+            Err(e) => error!("save failed: {}", e),
+          },
+          Event::KeyPressed { code: Key::X, .. } => match self.load() {
+            Ok(_) => info!("load success"),
+            Err(e) => error!("load failed: {}", e),
+          },
           Event::KeyPressed { code: Key::F2, .. } => {
             pause = !pause;
             if !pause {
@@ -233,6 +281,6 @@ impl Emulator {
   }
 
   pub fn set_keys(&mut self, p1: Vec<Key>, p2: Vec<Key>) {
-    self.cpu.main_bus().borrow_mut().set_controller_keys(p1, p2);
+    self.cpu.main_bus_mut().set_controller_keys(p1, p2);
   }
 }

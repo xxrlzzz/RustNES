@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sfml::graphics::Color;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -5,13 +6,19 @@ use std::vec::Vec;
 
 mod palette_colors;
 
+use crate::bus::main_bus::{
+  IORegister, RegisterHandler, OAM_ADDR, OAM_DATA, PPU_ADDR, PPU_CTRL, PPU_DATA, PPU_MASK,
+  PPU_SCROL, PPU_STATUS,
+};
 use crate::bus::message_bus::{Message, MessageBus};
 use crate::bus::picture_bus::PictureBus;
 use crate::common::bit_eq;
 use crate::common::types::*;
 use crate::mapper::Mapper;
 
-#[derive(Copy, Clone)]
+use self::palette_colors::{color_vec_deser, color_vec_ser};
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
 enum PipelineState {
   PreRender,
   Render,
@@ -19,7 +26,7 @@ enum PipelineState {
   VerticalBlank,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum CharacterPage {
   Low,
   High,
@@ -34,6 +41,7 @@ const FRAME_END_SCANLINE: usize = 261;
 // const ATTRIBUTE_OFFSET: u32 = 0x3C0;
 
 // pixel processing unit
+#[derive(Serialize, Deserialize)]
 pub struct Ppu {
   bus: PictureBus,
   sprite_memory: Vec<Byte>,
@@ -71,11 +79,11 @@ pub struct Ppu {
   sprite_page: CharacterPage,
 
   data_address_increment: Address,
+  #[serde(serialize_with = "color_vec_ser", deserialize_with = "color_vec_deser")]
   picture_buffer: Vec<Vec<Color>>,
-
+  #[serde(skip)]
   message_bus: Rc<RefCell<MessageBus>>,
 }
-
 impl Ppu {
   pub fn new(pic_bus: PictureBus, message_bus: Rc<RefCell<MessageBus>>) -> Self {
     Self {
@@ -116,6 +124,10 @@ impl Ppu {
 
       message_bus: message_bus,
     }
+  }
+
+  pub fn set_meeage_bus(&mut self, message_bus: Rc<RefCell<MessageBus>>) {
+    self.message_bus = message_bus;
   }
 
   pub fn set_mapper_for_bus(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
@@ -542,5 +554,57 @@ impl Ppu {
     for i in 0..self.sprite_data_address {
       self.sprite_memory[i] = *page.add(i + SCANLINE_VISIBLE_DOTS - self.sprite_data_address);
     }
+  }
+}
+
+impl RegisterHandler for Ppu {
+  fn read(&mut self, address: IORegister) -> Option<Byte> {
+    match address {
+      PPU_STATUS => Some(self.get_status()),
+      PPU_DATA => Some(self.get_data()),
+      OAM_ADDR => Some(self.get_oam_data()),
+      _ => None,
+    }
+  }
+
+  fn write(&mut self, address: IORegister, value: Byte) -> bool {
+    match address {
+      PPU_CTRL => {
+        self.control(value);
+        true
+      }
+      PPU_MASK => {
+        self.set_mask(value);
+        true
+      }
+      OAM_ADDR => {
+        self.set_oam_address(value);
+        true
+      }
+      OAM_DATA => {
+        self.set_oam_data(value);
+        true
+      }
+      PPU_SCROL => {
+        self.set_scroll(value);
+        true
+      }
+      PPU_ADDR => {
+        self.set_data_address(value as Address);
+        true
+      }
+      PPU_DATA => {
+        self.set_data(value);
+        true
+      }
+      _ => false,
+    }
+  }
+
+  fn dma(&mut self, page: *const Byte) -> bool {
+    unsafe {
+      self.do_dma(page as *const Byte);
+    }
+    true
   }
 }

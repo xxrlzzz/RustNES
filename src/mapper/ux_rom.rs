@@ -1,9 +1,15 @@
+use log::warn;
+use serde::{Deserialize, Serialize};
+use std::vec::Vec;
+
 use crate::cartridge::Cartridge;
 use crate::common::types::*;
 use crate::mapper::Mapper;
-use log::warn;
-use std::vec::Vec;
 
+use super::factory::CNROM;
+use super::save;
+
+#[derive(Serialize, Deserialize)]
 pub struct UxRom {
   select_chr: Address,
   character_ram: Option<Vec<Byte>>,
@@ -62,5 +68,13 @@ impl Mapper for UxRom {
 
   fn get_name_table_mirroring(&self) -> u8 {
     self.cart.get_name_table_mirroring()
+  }
+
+  fn save(&self) -> String {
+    save(self)
+  }
+
+  fn mapper_type(&self) -> u8 {
+    CNROM
   }
 }

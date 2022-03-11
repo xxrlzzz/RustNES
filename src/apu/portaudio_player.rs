@@ -6,6 +6,7 @@ use portaudio::{
 
 use std::sync::mpsc;
 
+#[derive(Default)]
 pub struct PortAudioPlayer {
   stream: Option<Stream<NonBlocking, Output<f32>>>,
   sender: Option<mpsc::Sender<f32>>,
@@ -67,6 +68,9 @@ impl PortAudioPlayer {
   pub fn start(&mut self) -> Result<(), Error> {
     if let Some(ref mut stream) = self.stream {
       stream.start()?
+    } else {
+      self.init()?;
+      self.start()?;
     }
     Ok(())
   }

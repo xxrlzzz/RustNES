@@ -1,8 +1,12 @@
 use std::f32::consts::PI;
 
+use serde::{Deserialize, Serialize};
+
 pub trait Filter {
   fn step(&mut self, x: f32) -> f32;
 }
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct SoundFilter {
   b0: f32,
   b1: f32,
@@ -50,6 +54,7 @@ impl Filter for SoundFilter {
     y
   }
 }
+
 pub(crate) type SoundFilterChain = Vec<SoundFilter>;
 
 impl Filter for SoundFilterChain {

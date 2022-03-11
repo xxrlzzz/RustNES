@@ -7,6 +7,7 @@ pub mod key_binding_parser;
 
 use key_binding_parser::TOTAL_BUTTONS;
 
+#[derive(Default, Clone)]
 pub struct Controller {
   enable_strobe: bool,
   key_states: u8,

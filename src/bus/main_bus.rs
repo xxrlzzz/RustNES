@@ -1,4 +1,6 @@
-use log::{error, warn};
+use log::{error, info, warn};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sfml::window::Key;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -6,10 +8,11 @@ use std::rc::Rc;
 use crate::apu::Apu;
 use crate::common::types::*;
 use crate::controller::Controller;
+use crate::mapper::factory::load_mapper;
 use crate::mapper::Mapper;
 use crate::ppu::Ppu;
 
-type IORegister = u16;
+pub type IORegister = u16;
 
 pub const PPU_CTRL: IORegister = 0x2000;
 pub const PPU_MASK: IORegister = 0x2001;
@@ -24,13 +27,23 @@ pub const APU_ADDR: IORegister = 0x4015;
 pub const JOY1: IORegister = 0x4016;
 pub const JOY2: IORegister = 0x4017;
 
+pub trait RegisterHandler {
+  fn read(&mut self, address: IORegister) -> Option<Byte>;
+  fn write(&mut self, address: IORegister, value: Byte) -> bool;
+  fn dma(&mut self, page: *const Byte) -> bool;
+}
+
+#[derive(Default, Serialize, Deserialize)]
 pub struct MainBus {
   ram: Vec<Byte>,
   ext_ram: Vec<Byte>,
+  #[serde(skip)]
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
-  ppu: Rc<RefCell<Ppu>>,
-  apu: Rc<RefCell<Apu>>,
+  #[serde(skip)]
+  registers: Vec<Rc<RefCell<dyn RegisterHandler>>>,
+  #[serde(skip)]
   control1: Controller,
+  #[serde(skip)]
   control2: Controller,
 
   skip_dma_cycles: bool,
@@ -42,12 +55,43 @@ impl MainBus {
       ram: vec![0; 0x800],
       ext_ram: vec![],
       mapper: None,
-      ppu,
-      apu,
+      registers: vec![ppu, apu],
       control1: Controller::new(),
       control2: Controller::new(),
 
       skip_dma_cycles: false,
+    }
+  }
+
+  pub fn save(&self) -> Value {
+    json!({
+      "ram": serde_json::to_string(&self.ram).unwrap(),
+      "ext_ram":serde_json::to_string(&self.ext_ram).unwrap(),
+      "mapper" : self.mapper.as_ref().map(|m| m.borrow().save()).unwrap_or(String::new()),
+      "skip_dma_cycles": self.skip_dma_cycles,
+      "mapper_type": self.mapper.as_ref().unwrap().borrow().mapper_type(),
+    })
+  }
+
+  pub fn load(
+    json: &serde_json::Value,
+    ppu: Rc<RefCell<Ppu>>,
+    apu: Rc<RefCell<Apu>>,
+    ctl1: Controller,
+    ctl2: Controller,
+  ) -> Self {
+    let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
+    let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
+    let mapper = load_mapper(mapper_type as Byte, mapper_content);
+    ppu.borrow_mut().set_mapper_for_bus(mapper.clone());
+    Self {
+      ram: serde_json::from_str(json.get("ram").unwrap().as_str().unwrap()).unwrap(),
+      ext_ram: serde_json::from_str(json.get("ext_ram").unwrap().as_str().unwrap()).unwrap(),
+      mapper: Some(mapper),
+      registers: vec![ppu, apu],
+      control1: ctl1,
+      control2: ctl2,
+      skip_dma_cycles: json.get("skip_dma_cycles").unwrap().as_bool().unwrap(),
     }
   }
 
@@ -56,6 +100,10 @@ impl MainBus {
     if self.mapper.as_ref().unwrap().borrow().has_extended_ram() {
       self.ext_ram.resize(0x2000, 0);
     }
+  }
+
+  pub fn control(&self) -> (Controller, Controller) {
+    (self.control1.clone(), self.control2.clone())
   }
 
   pub fn set_controller_keys(&mut self, p1: Vec<Key>, p2: Vec<Key>) {
@@ -80,13 +128,6 @@ impl MainBus {
         addr
       };
       match mapped_addr {
-        PPU_CTRL => self.ppu.borrow_mut().control(value),
-        PPU_MASK => self.ppu.borrow_mut().set_mask(value),
-        PPU_ADDR => self.ppu.borrow_mut().set_data_address(value as Address),
-        OAM_ADDR => self.ppu.borrow_mut().set_oam_address(value),
-        PPU_SCROL => self.ppu.borrow_mut().set_scroll(value),
-        PPU_DATA => self.ppu.borrow_mut().set_data(value),
-        OAM_DATA => self.ppu.borrow_mut().set_oam_data(value),
         JOY1 => {
           self.control1.strobe(value);
           self.control2.strobe(value);
@@ -96,15 +137,22 @@ impl MainBus {
           unsafe {
             let ptr = self.get_page_ptr(value);
             if let Some(ptr) = ptr {
-              self.ppu.borrow_mut().do_dma(ptr);
+              for reg in &mut self.registers {
+                if reg.borrow_mut().dma(ptr) {
+                  break;
+                }
+              }
             }
           }
         }
-        0x4000..=0x4013 | JOY2 | APU_ADDR => {
-          self.apu.borrow_mut().write_register(mapped_addr, value)
+        _ => {
+          for reg in &mut self.registers {
+            if reg.borrow_mut().write(mapped_addr, value) {
+              break;
+            }
+          }
         }
-        _ => {}
-      };
+      }
     } else if addr < 0x6000 {
       warn!("Expansion ROM write attempted. This currently unsupported");
     } else if addr < 0x8000 {
@@ -133,15 +181,16 @@ impl MainBus {
         addr
       };
       return match mapped_addr {
-        PPU_STATUS => self.ppu.borrow_mut().get_status(),
-        PPU_DATA => self.ppu.borrow_mut().get_data(),
-        OAM_ADDR => self.ppu.borrow().get_oam_data(),
-        APU_ADDR => self.apu.borrow().read_status(),
         JOY1 => self.control1.read(),
         JOY2 => self.control2.read(),
         _ => {
+          for reg in &mut self.registers {
+            if let Some(value) = reg.borrow_mut().read(mapped_addr) {
+              return value;
+            }
+          }
           warn!("Attempt to read at {:#x} without callback registered", addr);
-          0
+          return 0;
         }
       };
     }

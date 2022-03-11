@@ -7,6 +7,7 @@ pub enum Message {
   PpuRender(Vec<Vec<Color>>),
 }
 
+#[derive(Default)]
 pub struct MessageBus {
   queue: Queue<Message>,
 }

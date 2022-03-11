@@ -3,6 +3,8 @@ pub mod factory;
 pub mod n_rom;
 pub mod ux_rom;
 
+use serde::Serialize;
+
 use crate::common::types::*;
 
 pub trait Mapper {
@@ -14,4 +16,15 @@ pub trait Mapper {
   fn has_extended_ram(&self) -> bool;
 
   fn get_name_table_mirroring(&self) -> u8;
+
+  fn save(&self) -> String;
+
+  fn mapper_type(&self) -> u8;
+}
+
+fn save<T>(t: &T) -> String
+where
+  T: Serialize + Mapper,
+{
+  serde_json::to_string(&t).unwrap()
 }

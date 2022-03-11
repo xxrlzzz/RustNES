@@ -3,10 +3,14 @@ pub mod sound_filter;
 pub mod sound_wave;
 
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 
-use crate::common::{
-  bit_eq,
-  types::{Address, Byte},
+use crate::{
+  bus::main_bus::{IORegister, RegisterHandler, APU_ADDR, JOY2},
+  common::{
+    bit_eq,
+    types::{Address, Byte},
+  },
 };
 
 use self::{
@@ -34,11 +38,13 @@ lazy_static! {
 /**
  * Reference https://www.nesdev.org/apu_ref.txt
  */
+#[derive(Serialize, Deserialize)]
 pub struct Apu {
   cycle: u64,
   frame_period: Byte,
   frame_value: Byte,
   frame_irq: bool,
+  #[serde(skip)]
   player: PortAudioPlayer,
   sample_rate: f64,
 
@@ -261,5 +267,28 @@ impl Apu {
       self.step_sweep();
       self.step_length();
     }
+  }
+}
+
+impl RegisterHandler for Apu {
+  fn read(&mut self, address: IORegister) -> Option<Byte> {
+    match address {
+      APU_ADDR => Some(self.read_status()),
+      _ => None,
+    }
+  }
+
+  fn write(&mut self, address: IORegister, value: Byte) -> bool {
+    match address as Address {
+      0x4000..=0x4013 | JOY2 | APU_ADDR => {
+        self.write_register(address, value);
+        true
+      }
+      _ => false,
+    }
+  }
+
+  fn dma(&mut self, _: *const Byte) -> bool {
+    false
   }
 }

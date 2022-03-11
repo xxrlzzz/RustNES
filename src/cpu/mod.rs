@@ -1,12 +1,12 @@
-use std::cell::RefCell;
 use std::convert::Into;
-use std::rc::Rc;
 
 use self::opcodes::*;
 use crate::bus::main_bus::MainBus;
 use crate::common::bit_eq;
 use crate::common::types::*;
 use log::warn;
+use serde::Deserialize;
+use serde::Serialize;
 
 mod opcodes;
 
@@ -36,7 +36,7 @@ mod flag_const {
   pub const ALL: Byte = NEGATIVE | OVERFLOW | (1 << 5) | DECIMAL | INTERRUPT | ZERO | CARRY;
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 struct Flag(Byte);
 
 impl Flag {
@@ -69,7 +69,7 @@ impl Into<Byte> for Flag {
     return self.0;
   }
 }
-
+#[derive(Serialize, Deserialize)]
 pub struct Cpu {
   skip_cycles: u32,
   cycles: u32,
@@ -83,12 +83,12 @@ pub struct Cpu {
 
   // status flag.
   flag: Flag,
-  // main_bus: &'a mut MainBus,
-  main_bus: Rc<RefCell<MainBus>>,
+  #[serde(skip)]
+  main_bus: MainBus,
 }
 
 impl Cpu {
-  pub fn new(main_bus: Rc<RefCell<MainBus>>) -> Self {
+  pub fn new(main_bus: MainBus) -> Self {
     Self {
       skip_cycles: 0,
       cycles: 0,
@@ -98,15 +98,25 @@ impl Cpu {
       r_x: 0,
       r_y: 0,
       flag: Flag(0),
-      main_bus: main_bus,
+      main_bus,
     }
   }
-  pub fn main_bus(&self) -> Rc<RefCell<MainBus>> {
-    self.main_bus.clone()
+
+  pub fn set_main_bus(&mut self, main_bus: MainBus) {
+    self.main_bus = main_bus;
+  }
+
+  pub fn main_bus(&self) -> &MainBus {
+    &self.main_bus
+  }
+
+  pub fn main_bus_mut(&mut self) -> &mut MainBus {
+    &mut self.main_bus
   }
 
   pub fn reset(&mut self) {
-    self.reset_at(self.read_address(opcodes::RESET_VECTOR))
+    let reset_vector = self.read_address(opcodes::RESET_VECTOR);
+    self.reset_at(reset_vector)
   }
 
   fn reset_at(&mut self, start_addr: Address) {
@@ -161,20 +171,14 @@ impl Cpu {
   }
 
   fn push_stack(&mut self, value: Byte) {
-    self
-      .main_bus
-      .borrow_mut()
-      .write(0x100 | self.r_sp as Address, value);
+    self.main_bus.write(0x100 | self.r_sp as Address, value);
     // Hardware stacks grow downward!
     self.r_sp -= 1;
   }
 
   fn pull_stack(&mut self) -> Byte {
     self.r_sp += 1;
-    self
-      .main_bus
-      .borrow_mut()
-      .read(0x100 | self.r_sp as Address)
+    self.main_bus.read(0x100 | self.r_sp as Address)
   }
 
   fn pull_stack_16(&mut self) -> Address {
@@ -204,15 +208,14 @@ impl Cpu {
     self.skip_cycles += DMC_CYCLES;
   }
 
-  fn read_address(&self, addr: Address) -> Address {
-    let mut bus = self.main_bus.borrow_mut();
-    bus.read_addr(addr) | bus.read_addr(addr + 1) << 8
+  fn read_address(&mut self, addr: Address) -> Address {
+    self.main_bus.read_addr(addr) | self.main_bus.read_addr(addr + 1) << 8
     // let res = self.main_bus.borrow_mut().read_addr(addr);
     // res | (self.main_bus.borrow_mut().read_addr(addr + 1) << 8)
   }
 
   fn read_and_forward_pc(&mut self) -> Address {
-    let res = self.main_bus.borrow_mut().read_addr(self.r_pc);
+    let res = self.main_bus.read_addr(self.r_pc);
     self.r_pc += 1;
     res
   }
@@ -253,7 +256,7 @@ impl Cpu {
         || self.execute_type0(opcode))
     {
       self.skip_cycles += cycle_length as u32;
-      if self.main_bus.borrow_mut().check_and_reset_dma() {
+      if self.main_bus.check_and_reset_dma() {
         self.skip_dma_cycles();
       }
     } else {
@@ -289,12 +292,8 @@ impl Cpu {
         // beginning of that page rather than the beginning of the next Recreating
         // here:
         let page = location & 0xFF00;
-        self.r_pc = self.main_bus.borrow_mut().read_addr(location);
-        self.r_pc |= self
-          .main_bus
-          .borrow_mut()
-          .read_addr(page | ((location + 1) & 0xFF))
-          << 8;
+        self.r_pc = self.main_bus.read_addr(location);
+        self.r_pc |= self.main_bus.read_addr(page | ((location + 1) & 0xFF)) << 8;
       }
       operation_implied::PHP => self.push_stack(self.get_flag() | (1 << 4)),
       operation_implied::PLP => {
@@ -402,12 +401,9 @@ impl Cpu {
     }
     // doing operation.
     if op == operation1::STA {
-      self
-        .main_bus
-        .borrow_mut()
-        .write(location.unwrap(), self.r_a);
+      self.main_bus.write(location.unwrap(), self.r_a);
     } else {
-      let operand = self.main_bus.borrow_mut().read(location.unwrap());
+      let operand = self.main_bus.read(location.unwrap());
       match op {
         operation1::ORA => {
           self.r_a |= operand;
@@ -499,25 +495,23 @@ impl Cpu {
         let r = self.shift_right(addr_mode == addr_mode2::ACCUMULATOR, true, location);
         self.set_zn(r);
       }
-      operation2::STX => self.main_bus.borrow_mut().write(location, self.r_x),
+      operation2::STX => self.main_bus.write(location, self.r_x),
       operation2::LDX => {
-        self.r_x = self.main_bus.borrow_mut().read(location);
+        self.r_x = self.main_bus.read(location);
         self.set_zn(self.r_x);
       }
       operation2::DEC => {
         let r = {
-          let mut bus = self.main_bus.borrow_mut();
-          let r = bus.read(location).overflowing_sub(1).0;
-          bus.write(location, r);
+          let r = self.main_bus.read(location).overflowing_sub(1).0;
+          self.main_bus.write(location, r);
           r
         };
         self.set_zn(r);
       }
       operation2::INC => {
         let r = {
-          let mut bus = self.main_bus.borrow_mut();
-          let r = bus.read(location).overflowing_add(1).0;
-          bus.write(location, r);
+          let r = self.main_bus.read(location).overflowing_add(1).0;
+          self.main_bus.write(location, r);
           r
         };
         self.set_zn(r);
@@ -542,24 +536,24 @@ impl Cpu {
 
     match (opcode & OPERATION_MASK) >> OPERATION_SHIFT {
       operation0::BIT => {
-        let operand = self.main_bus.borrow_mut().read(location);
+        let operand = self.main_bus.read(location);
         self
           .flag
           .set_at(flag_const::ZERO, (self.r_a & operand) == 0);
         self.flag.set_by_check(flag_const::OVERFLOW, operand);
         self.flag.set_by_check(flag_const::NEGATIVE, operand);
       }
-      operation0::STY => self.main_bus.borrow_mut().write(location, self.r_y),
+      operation0::STY => self.main_bus.write(location, self.r_y),
       operation0::LDY => {
-        self.r_y = self.main_bus.borrow_mut().read(location);
+        self.r_y = self.main_bus.read(location);
         self.set_zn(self.r_y);
       }
       operation0::CPY => {
-        let val = self.main_bus.borrow_mut().read(location);
+        let val = self.main_bus.read(location);
         self.compare(self.r_y, val);
       }
       operation0::CPX => {
-        let val = self.main_bus.borrow_mut().read(location);
+        let val = self.main_bus.read(location);
         self.compare(self.r_x, val);
       }
       _ => return false,
@@ -575,9 +569,8 @@ impl Cpu {
     let location = match addr_mode {
       addr_mode1::INDEXED_INDIRECT_X => {
         let zero_addr = self.r_x as Address + self.read_and_forward_pc();
-        let mut bus = self.main_bus.borrow_mut();
-        let ret = bus.read_addr(zero_addr & 0xFF);
-        ret | bus.read_addr((zero_addr + 1) & 0xFF) << 8
+        self.main_bus.read_addr(zero_addr & 0xFF)
+          | self.main_bus.read_addr((zero_addr + 1) & 0xFF) << 8
       }
       addr_mode1::ZERO_PAGE => self.read_and_forward_pc(),
       addr_mode1::IMMEDIATE => {
@@ -651,7 +644,7 @@ impl Cpu {
     let operand = if accumulator {
       &mut self.r_a
     } else {
-      t = self.main_bus.borrow_mut().read(location);
+      t = self.main_bus.read(location);
       &mut t
     };
 
@@ -662,7 +655,7 @@ impl Cpu {
       *operand |= prev_c;
     }
     if !accumulator {
-      self.main_bus.borrow_mut().write(location, *operand);
+      self.main_bus.write(location, *operand);
     }
     *operand
   }
@@ -673,7 +666,7 @@ impl Cpu {
     let operand = if accumulator {
       &mut self.r_a
     } else {
-      t = self.main_bus.borrow_mut().read(location);
+      t = self.main_bus.read(location);
       &mut t
     };
     self.flag.set_at(flag_const::CARRY, bit_eq(*operand, 1));
@@ -683,7 +676,7 @@ impl Cpu {
       *operand |= prev_c << 7;
     }
     if !accumulator {
-      self.main_bus.borrow_mut().write(location, *operand);
+      self.main_bus.write(location, *operand);
     }
     *operand
   }

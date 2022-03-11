@@ -1,8 +1,14 @@
+use log::warn;
+use serde::{Deserialize, Serialize};
+
 use crate::cartridge::{Cartridge, BANK_SIZE};
 use crate::common::types::*;
 use crate::mapper::Mapper;
-use log::warn;
 
+use super::factory::CNROM;
+use super::save;
+
+#[derive(Serialize, Deserialize)]
 pub struct CnRom {
   one_bank: bool,
   select_chr: Address,
@@ -47,5 +53,13 @@ impl Mapper for CnRom {
 
   fn get_name_table_mirroring(&self) -> u8 {
     self.cart.get_name_table_mirroring()
+  }
+
+  fn save(&self) -> String {
+    save(self)
+  }
+
+  fn mapper_type(&self) -> u8 {
+    CNROM
   }
 }

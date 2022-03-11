@@ -1,9 +1,14 @@
 use log::warn;
+use serde::{Deserialize, Serialize};
 
 use crate::cartridge::{Cartridge, BANK_SIZE};
 use crate::common::types::*;
 use crate::mapper::Mapper;
 
+use super::factory::NROM;
+use super::save;
+
+#[derive(Serialize, Deserialize)]
 pub struct NRom {
   one_bank: bool,
   character_ram: Option<Vec<Byte>>,
@@ -58,5 +63,13 @@ impl Mapper for NRom {
 
   fn get_name_table_mirroring(&self) -> u8 {
     self.cart.get_name_table_mirroring()
+  }
+
+  fn save(&self) -> String {
+    save(self)
+  }
+
+  fn mapper_type(&self) -> u8 {
+    NROM
   }
 }

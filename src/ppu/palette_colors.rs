@@ -1,3 +1,4 @@
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sfml::graphics::Color;
 
 pub static COLORS: [Color; 64] = [
@@ -66,3 +67,83 @@ pub static COLORS: [Color; 64] = [
   Color::rgb(0x00, 0x00, 0x00),
   Color::rgb(0x00, 0x00, 0x00),
 ];
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "Color")]
+pub(crate) struct ColorDef {
+  #[serde(getter = "Color::red")]
+  red: u8,
+  #[serde(getter = "Color::green")]
+  green: u8,
+  #[serde(getter = "Color::blue")]
+  blue: u8,
+}
+
+impl From<ColorDef> for Color {
+  fn from(color: ColorDef) -> Color {
+    Color::rgb(color.red, color.green, color.blue)
+  }
+}
+
+impl From<Color> for ColorDef {
+  fn from(color: Color) -> ColorDef {
+    ColorDef {
+      red: color.red(),
+      green: color.green(),
+      blue: color.blue(),
+    }
+  }
+}
+
+impl serde::Serialize for ColorDef {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    serializer.serialize_str(&format!(
+      "0x{:02x}{:02x}{:02x}FF",
+      self.red, self.green, self.blue
+    ))
+  }
+}
+
+impl<'d> serde::Deserialize<'d> for ColorDef {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'d>,
+  {
+    let s = String::deserialize(deserializer)?;
+    let s = s.as_str();
+    Ok(ColorDef {
+      red: u8::from_str_radix(&s[2..4], 16).unwrap(),
+      green: u8::from_str_radix(&s[4..6], 16).unwrap(),
+      blue: u8::from_str_radix(&s[6..8], 16).unwrap(),
+    })
+  }
+}
+
+pub(super) fn color_vec_ser<S: Serializer>(
+  vec: &Vec<Vec<Color>>,
+  serializer: S,
+) -> Result<S::Ok, S::Error> {
+  // First convert the vector into a Vec<LocalColor>.
+  let to_local = |color: &Color| -> ColorDef { ColorDef::from(*color) };
+  let to_local_v1 = |vec: &Vec<Color>| -> Vec<ColorDef> { vec.iter().map(to_local).collect() };
+  let vec2: Vec<Vec<ColorDef>> = vec.iter().map(to_local_v1).collect();
+
+  // Instead of serializing Vec<ExternalCrateColor>, we serialize Vec<LocalColor>.
+  vec2.serialize(serializer)
+}
+
+pub(super) fn color_vec_deser<'a, D: Deserializer<'a>>(
+  deserializer: D,
+) -> Result<Vec<Vec<Color>>, D::Error> {
+  let to_external = |color: &ColorDef| -> Color { Color::rgb(color.red, color.green, color.blue) };
+
+  let to_external_v1 =
+    |vec: &Vec<ColorDef>| -> Vec<Color> { vec.iter().map(to_external).collect() };
+  // Deserialize as if it was a Vec<LocalColor>.
+  let vec: Vec<Vec<ColorDef>> = Vec::<Vec<ColorDef>>::deserialize(deserializer)?;
+  // Convert it into an Vec<ExternalCrateColor>
+  Ok(vec.iter().map(to_external_v1).collect())
+}

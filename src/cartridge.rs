@@ -1,6 +1,8 @@
 use crate::common::bit_eq;
 use crate::common::types::*;
 use log::{error, info};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -8,6 +10,7 @@ use std::vec::Vec;
 
 pub static BANK_SIZE: usize = 0x4000;
 
+#[derive(Serialize, Deserialize)]
 pub struct Cartridge {
   prg_rom: Vec<Byte>,
   chr_rom: Vec<Byte>,
