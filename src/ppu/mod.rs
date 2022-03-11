@@ -146,7 +146,6 @@ impl Ppu {
     self.data_address_increment = 1;
     self.pipeline_state = PipelineState::PreRender;
 
-    self.scanline_sprites.reserve(8);
     self.scanline_sprites.resize(0, 0);
   }
 
@@ -160,25 +159,31 @@ impl Ppu {
     self.cycle += 1;
   }
 
-  pub fn pre_render(&mut self) {
-    let show_all = self.show_background && self.show_sprites;
+  fn pre_render(&mut self) {
     if self.cycle == 1 {
       self.vblank = false;
       self.sprite_zero_hit = false;
-    } else if self.cycle == SCANLINE_VISIBLE_DOTS + 2 && show_all {
-      // Set bits related to horizontal position
-      // Unset horizontal bits
-      self.data_address &= !0x41F;
-      // Copy
-      self.data_address |= self.temp_address & 0x41F;
-    } else if self.cycle > 280 && self.cycle <= 304 && show_all {
-      // Set vertical bits
-      // Unset bits related to horizontal
-      self.data_address &= 0x7BE0;
-      self.data_address |= self.temp_address & 0x7BE0;
+      return;
+    }
+    let enable_render = self.show_background && self.show_sprites;
+    if enable_render {
+      if self.cycle == SCANLINE_VISIBLE_DOTS + 2 {
+        // Set bits related to horizontal position
+        // Unset horizontal bits
+        self.data_address &= !0x41F;
+        // Copy
+        self.data_address |= self.temp_address & 0x41F;
+        return;
+      } else if self.cycle > 280 && self.cycle <= 304 {
+        // Set vertical bits
+        // Unset bits related to horizontal
+        self.data_address &= !0x7BE0;
+        self.data_address |= self.temp_address & 0x7BE0;
+        return;
+      }
     }
     // If rendering is on, every other frame is one cycle shorter
-    if self.cycle >= SCANLINE_END_CYCLE - (!self.event_frame && show_all) as usize {
+    if self.cycle >= SCANLINE_END_CYCLE - (!self.event_frame && enable_render) as usize {
       self.pipeline_state = PipelineState::Render;
       self.cycle = 0;
       self.scanline = 0;
@@ -194,10 +199,11 @@ impl Ppu {
       }
     } else if self.cycle == SCANLINE_VISIBLE_DOTS + 2 {
       if self.show_background && self.show_sprites {
-        self.render_step3();
+        // Copy bits related to horizontal position
+        self.data_address &= !0x041F;
+        self.data_address |= self.temp_address & 0x041F;
       }
     }
-
     if self.cycle >= SCANLINE_END_CYCLE {
       // Find and index sprites that are on the next Scanline
       // This isn't where/when this indexing, actually copying in 2C02 is done
@@ -237,7 +243,7 @@ impl Ppu {
     let y = self.scanline as i32;
 
     if self.show_background {
-      let x_fine = (self.fine_x_scroll % 8 + x % 8) % 8;
+      let x_fine = (self.fine_x_scroll + x) % 8;
       if !self.hide_edge_background || x >= 8 {
         // Fetch tile
         // Mask off fine y
@@ -349,16 +355,16 @@ impl Ppu {
         break;
       }
     }
-    let palette_addr = if spr_opaque && (!bg_opaque || (bg_opaque && sprite_foreground)) {
+    let palette_addr = if spr_opaque && (!bg_opaque || sprite_foreground) {
       spr_color
-    } else if !bg_opaque {
-      0
-    } else {
+    } else if bg_opaque {
       bg_color
+    } else {
+      0
     };
 
     self.picture_buffer[x as usize][y as usize] =
-      Color::from(palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize]);
+      palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize];
   }
 
   fn render_step2(&mut self) {
@@ -386,25 +392,20 @@ impl Ppu {
     }
   }
 
-  fn render_step3(&mut self) {
-    // Copy bits related to horizontal position
-    self.data_address &= !0x041F;
-    self.data_address |= self.temp_address & 0x041F;
-  }
-
   fn post_render(&mut self) {
-    if self.cycle >= SCANLINE_END_CYCLE {
-      self.scanline += 1;
-      self.cycle = 0;
-      self.pipeline_state = PipelineState::VerticalBlank;
-      self
-        .message_bus
-        .borrow_mut()
-        .push(Message::PpuRender(self.picture_buffer.clone()));
+    if self.cycle < SCANLINE_END_CYCLE {
+      return;
     }
+    self.scanline += 1;
+    self.cycle = 0;
+    self.pipeline_state = PipelineState::VerticalBlank;
+    self
+      .message_bus
+      .borrow_mut()
+      .push(Message::PpuRender(self.picture_buffer.clone()));
   }
 
-  pub fn vertical_blank(&mut self) {
+  fn vertical_blank(&mut self) {
     if self.cycle == 1 && self.scanline == (VISIBLE_SCANLINES + 1) {
       self.vblank = true;
       if self.generate_interrupt {
@@ -441,19 +442,18 @@ impl Ppu {
     data
   }
 
+  // 0x2004: OAMDATA (read)
   pub fn get_oam_data(&self) -> Byte {
     self.sprite_memory[self.sprite_data_address]
   }
 
-  pub fn set_data_address(&mut self, addr: Byte) {
+  pub fn set_data_address(&mut self, addr: Address) {
     if self.first_write {
       // Unset the upper byte
-      self.temp_address &= !0xFF00;
-      self.temp_address |= (addr as Address & 0x3F) << 8;
+      self.temp_address = (self.temp_address & 0x80FF) | ((addr & 0x3F) << 8);
     } else {
       // Unset the lower byte
-      self.temp_address &= !0x00FF;
-      self.temp_address |= addr as Address;
+      self.temp_address = (self.temp_address & 0xFF00) | addr;
       self.data_address = self.temp_address;
     }
     self.first_write = !self.first_write;
@@ -463,6 +463,7 @@ impl Ppu {
     self.sprite_data_address = addr as usize;
   }
 
+  //  0x2004: OAMDATA (write)
   pub fn set_oam_data(&mut self, value: Byte) {
     self.sprite_memory[self.sprite_data_address] = value;
     self.sprite_data_address += 1;
@@ -486,6 +487,7 @@ impl Ppu {
     self.first_write = !self.first_write;
   }
 
+  // 0x2001 PPUMASK
   pub fn set_mask(&mut self, mask: Byte) {
     self.grey_scale_mode = bit_eq(mask, 0x1);
     self.hide_edge_background = !bit_eq(mask, 0x2);
@@ -494,8 +496,28 @@ impl Ppu {
     self.show_sprites = bit_eq(mask, 0x10);
   }
 
+  /**
+   0x2000 PPUCTRL
+  7  bit  0
+  ---- ----
+  VPHB SINN
+  |||| ||||
+  |||| ||++- Base nametable address
+  |||| ||    (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+  |||| |+--- VRAM address increment per CPU read/write of PPUDATA
+  |||| |     (0: add 1, going across; 1: add 32, going down)
+  |||| +---- Sprite pattern table address for 8x8 sprites
+  ||||       (0: $0000; 1: $1000; ignored in 8x16 mode)
+  |||+------ Background pattern table address (0: $0000; 1: $1000)
+  ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
+  |+-------- PPU master/slave select
+  |          (0: read backdrop from EXT pins; 1: output color on EXT pins)
+  +--------- Generate an NMI at the start of the
+            vertical blanking interval (0: off; 1: on)
+   */
   pub fn control(&mut self, ctrl: Byte) {
     self.generate_interrupt = bit_eq(ctrl, 0x80);
+    // Ignore the 6 bit.
     self.long_sprites = bit_eq(ctrl, 0x20);
     self.background_page = if bit_eq(ctrl, 0x10) {
       CharacterPage::High
@@ -507,25 +529,18 @@ impl Ppu {
     } else {
       CharacterPage::Low
     };
-    if bit_eq(ctrl, 0x4) {
-      self.data_address_increment = 0x20;
-    } else {
-      self.data_address_increment = 1;
-    }
-
+    self.data_address_increment = if bit_eq(ctrl, 0x4) { 0x20 } else { 1 };
     // Set the name table in the temp address, this will be reflected
-    // in the data address during rendering unset
-    self.temp_address &= !0xC00;
-    // Set according to ctrl bits
-    self.temp_address |= (ctrl as Address & 0x3) << 10;
+    // in the data address during rendering
+    self.temp_address = (self.temp_address & !0xC00) | ((ctrl as Address & 0x3) << 10);
   }
 
   pub unsafe fn do_dma(&mut self, page: *const Byte) {
-    for i in self.sprite_data_address..256 {
+    for i in self.sprite_data_address..SCANLINE_VISIBLE_DOTS {
       self.sprite_memory[i] = *page.add(i);
     }
     for i in 0..self.sprite_data_address {
-      self.sprite_memory[i] = *page.add(i + 256 - self.sprite_data_address);
+      self.sprite_memory[i] = *page.add(i + SCANLINE_VISIBLE_DOTS - self.sprite_data_address);
     }
   }
 }

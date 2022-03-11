@@ -82,7 +82,7 @@ impl MainBus {
       match mapped_addr {
         PPU_CTRL => self.ppu.borrow_mut().control(value),
         PPU_MASK => self.ppu.borrow_mut().set_mask(value),
-        PPU_ADDR => self.ppu.borrow_mut().set_data_address(value),
+        PPU_ADDR => self.ppu.borrow_mut().set_data_address(value as Address),
         OAM_ADDR => self.ppu.borrow_mut().set_oam_address(value),
         PPU_SCROL => self.ppu.borrow_mut().set_scroll(value),
         PPU_DATA => self.ppu.borrow_mut().set_data(value),

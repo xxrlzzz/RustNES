@@ -6,23 +6,20 @@ use crate::mapper::Mapper;
 
 pub struct NRom {
   one_bank: bool,
-  use_character_ram: bool,
-  character_ram: Vec<Byte>,
+  character_ram: Option<Vec<Byte>>,
   cart: Cartridge,
 }
 
 impl NRom {
   pub fn new(cart: Cartridge) -> Self {
-    let ues_character_ram = cart.get_vrom().len() == 0;
-    let character_ram = if ues_character_ram {
-      vec![0; 0x2000]
+    let ram = if cart.get_vrom().len() == 0 {
+      Some(vec![0; 0x2000])
     } else {
-      vec![0]
+      None
     };
     Self {
       one_bank: cart.get_rom().len() == BANK_SIZE,
-      use_character_ram: ues_character_ram,
-      character_ram: character_ram,
+      character_ram: ram,
       cart: cart,
     }
   }
@@ -42,18 +39,16 @@ impl Mapper for NRom {
   }
 
   fn read_chr(&self, addr: Address) -> Byte {
-    if self.use_character_ram {
-      self.character_ram[addr as usize]
-    } else {
-      self.cart.get_vrom()[addr as usize]
+    match &self.character_ram {
+      Some(ram) => ram[addr as usize],
+      None => self.cart.get_vrom()[addr as usize],
     }
   }
 
   fn write_chr(&mut self, addr: Address, value: Byte) {
-    if self.use_character_ram {
-      self.character_ram[addr as usize] = value;
-    } else {
-      warn!("Attempting to write Read-only CHR memory at {:#x}", addr);
+    match &mut self.character_ram {
+      Some(ram) => ram[addr as usize] = value,
+      None => warn!("Attempting to write read-only CHR memory on {:#x}", addr),
     }
   }
 

@@ -13,7 +13,7 @@ pub struct UxRom {
 impl UxRom {
   pub fn new(cart: Cartridge) -> Self {
     let ram = if cart.get_vrom().len() == 0 {
-      Some(Vec::with_capacity(0x2000))
+      Some(vec![0; 0x2000])
     } else {
       None
     };

@@ -1,8 +1,6 @@
 use sfml::graphics::{Color, Drawable, PrimitiveType, RenderStates, RenderTarget, VertexArray};
 use sfml::system::{Vector2f, Vector2u};
 
-use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
-
 const TWO_TRIANGLE_POINTS: usize = 6;
 
 pub struct VirtualScreen {
@@ -28,12 +26,13 @@ impl VirtualScreen {
 
     let vec_right = Vector2f::new(pixel_size, 0.);
     let vec_bottom = Vector2f::new(0., pixel_size);
+    let mut index = 0;
     for x in 0..w {
       for y in 0..h {
-        let index = (x * h + y) as usize * TWO_TRIANGLE_POINTS;
+        // let index = (x * h + y) as usize * TWO_TRIANGLE_POINTS;
         let coord_top_left = Vector2f::new(x as f32 * pixel_size, y as f32 * pixel_size);
         let coord_top_right = coord_top_left + vec_right;
-        let coord_bottom_left = coord_top_left + vec_right;
+        let coord_bottom_left = coord_top_left + vec_bottom;
         let coord_bottom_right = coord_top_right + vec_bottom;
         // 0/5-----1
         // |\ Tri1 |
@@ -63,25 +62,31 @@ impl VirtualScreen {
         // top-right
         self.vertices[index + 5].position = coord_top_left;
         self.vertices[index + 5].color = color;
+
+        index += 6;
       }
     }
   }
 
-  fn set_pixel(&mut self, x: usize, y: usize, color: Color) {
-    let index = (x * self.screen_size.y as usize + y) * 6;
-    if index >= self.vertices.vertex_count() {
-      return;
-    }
-    for i in 0..TWO_TRIANGLE_POINTS {
-      self.vertices[index + i].color = color;
-    }
-  }
+  // fn set_pixel(&mut self, x: usize, y: usize, color: Color) {
+  //   let index = (x * self.screen_size.y as usize + y) * 6;
+  //   // if index >= self.vertices.vertex_count() {
+  //   //   return;
+  //   // }
+  //   for i in 0..TWO_TRIANGLE_POINTS {
+  //     self.vertices[index + i].color = color;
+  //   }
+  // }
 
   pub fn set_picture(&mut self, picture_buffer: &Vec<Vec<Color>>) {
-    // TODO better copy method.
-    for x in 0..SCANLINE_VISIBLE_DOTS {
-      for y in 0..VISIBLE_SCANLINES {
-        self.set_pixel(x, y, picture_buffer[x][y]);
+    let mut index = 0;
+    for x in 0..self.screen_size.x as usize {
+      for y in 0..self.screen_size.y as usize {
+        for i in 0..TWO_TRIANGLE_POINTS {
+          self.vertices[index + i].color = picture_buffer[x][y];
+        }
+        index += 6;
+        // self.set_pixel(x, y, picture_buffer[x][y]);
       }
     }
   }

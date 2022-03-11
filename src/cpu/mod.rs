@@ -6,8 +6,7 @@ use self::opcodes::*;
 use crate::bus::main_bus::MainBus;
 use crate::common::bit_eq;
 use crate::common::types::*;
-use crate::ppu::SCANLINE_END_CYCLE_LENGTH;
-use log::{debug, warn};
+use log::warn;
 
 mod opcodes;
 

@@ -12,10 +12,7 @@ const NROM: MapperType = 0;
 const UXROM: MapperType = 2;
 const CNROM: MapperType = 3;
 
-pub fn create_mapper<'a>(
-  cartridge: Cartridge,
-  on_mirroring: Box<dyn FnMut() -> ()>,
-) -> Rc<RefCell<dyn Mapper + 'a>> {
+pub fn create_mapper<'a>(cartridge: Cartridge) -> Rc<RefCell<dyn Mapper + 'a>> {
   let mapper_type = cartridge.get_mapper();
   match mapper_type {
     NROM => Rc::new(RefCell::new(NRom::new(cartridge))),

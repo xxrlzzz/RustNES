@@ -18,7 +18,6 @@ use crate::virtual_screen::VirtualScreen;
 
 const NES_VIDEO_WIDTH: u32 = SCANLINE_VISIBLE_DOTS as u32;
 const NES_VIDEO_HEIGHT: u32 = VISIBLE_SCANLINES as u32;
-const DEFAULT_SCREEN_SCALE: f32 = 2.;
 const CPU_CYCLE_DURATION: Duration = Duration::from_nanos(559);
 
 pub struct Emulator {
@@ -35,7 +34,7 @@ pub struct Emulator {
 }
 
 impl Emulator {
-  pub fn new() -> Self {
+  pub fn new(scale: f32) -> Self {
     let message_bus = Rc::new(RefCell::new(MessageBus::new()));
     let ppu = Rc::new(RefCell::new(Ppu::new(
       PictureBus::new(),
@@ -44,15 +43,15 @@ impl Emulator {
     let apu = Rc::new(RefCell::new(Apu::new()));
     let main_bus = Rc::new(RefCell::new(MainBus::new(ppu.clone(), apu.clone())));
     let video_mode = VideoMode::new(
-      (NES_VIDEO_WIDTH as f32 * DEFAULT_SCREEN_SCALE) as u32,
-      (NES_VIDEO_HEIGHT as f32 * DEFAULT_SCREEN_SCALE) as u32,
+      (NES_VIDEO_WIDTH as f32 * scale) as u32,
+      (NES_VIDEO_HEIGHT as f32 * scale) as u32,
       32,
     );
     Self {
       cpu: Cpu::new(main_bus),
       apu,
       ppu,
-      screen_scale: DEFAULT_SCREEN_SCALE,
+      screen_scale: scale,
       emulator_screen: VirtualScreen::new(),
       window: RenderWindow::new(
         video_mode,
@@ -123,17 +122,14 @@ impl Emulator {
     if !cartridge.load_from_file(rom_path) {
       return;
     }
-    let mapper = factory::create_mapper(
-      cartridge,
-      Box::new(|| {
-        // TDDO
-      }),
-    );
+    let mapper = factory::create_mapper(cartridge);
     self.cpu.main_bus().borrow_mut().set_mapper(mapper.clone());
     self.cpu.reset();
     self.ppu.borrow_mut().set_mapper_for_bus(mapper.clone());
     self.ppu.borrow_mut().reset();
+  }
 
+  fn init_screen(&mut self) {
     self.window.set_vertical_sync_enabled(true);
     self.emulator_screen.create(
       NES_VIDEO_WIDTH,
@@ -170,6 +166,7 @@ impl Emulator {
 
   pub fn run(&mut self, rom_path: &str) {
     self.init_rom(rom_path);
+    self.init_screen();
     self.apu.borrow_mut().start();
     let mut focus = true;
     let mut pause = false;
