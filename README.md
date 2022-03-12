@@ -5,12 +5,13 @@ Hello, this is a NES Emulator base on [SimpleNES](https://github.com/amhndu/Simp
 
 ## Build
 
-We use [SFML](https://docs.rs/sfml/latest/sfml/) binding on c++ to show game window, so SFML 2.5 and CSFML 2.5 must be installed.
+We use [SFML](https://docs.rs/sfml/latest/sfml/) binding on c++ to show game window, and also use [portaudio](https://docs.rs/portaudio/0.7.0/portaudio/) to play music. Those dependencies are required to build this project.
 
 Note due to the performance issue, you should run in release mode to get enough frame rate to fresh screen.
 
 ## TODO
 
-1. Audio support # DONE
-2. More Rom type support
-3. Pause/Resume/Save
+- [x] Audio support
+- [ ] More Rom type support
+- [ ] Test more nes games and upload result.
+- [x] Pause/Resume/Save 
