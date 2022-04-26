@@ -1,4 +1,4 @@
-use log::{error, info, warn};
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sfml::window::Key;
@@ -50,7 +50,7 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new(ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
+  pub fn new(apu: Rc<RefCell<Apu>>, ppu: Rc<RefCell<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
@@ -73,13 +73,7 @@ impl MainBus {
     })
   }
 
-  pub fn load(
-    json: &serde_json::Value,
-    ppu: Rc<RefCell<Ppu>>,
-    apu: Rc<RefCell<Apu>>,
-    ctl1: Controller,
-    ctl2: Controller,
-  ) -> Self {
+  pub fn load(json: &serde_json::Value, ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
     let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
     let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
     let mapper = load_mapper(mapper_type as Byte, mapper_content);
@@ -89,8 +83,8 @@ impl MainBus {
       ext_ram: serde_json::from_str(json.get("ext_ram").unwrap().as_str().unwrap()).unwrap(),
       mapper: Some(mapper),
       registers: vec![ppu, apu],
-      control1: ctl1,
-      control2: ctl2,
+      control1: Controller::new(),
+      control2: Controller::new(),
       skip_dma_cycles: json.get("skip_dma_cycles").unwrap().as_bool().unwrap(),
     }
   }

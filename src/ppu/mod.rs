@@ -126,7 +126,7 @@ impl Ppu {
     }
   }
 
-  pub fn set_meeage_bus(&mut self, message_bus: Rc<RefCell<MessageBus>>) {
+  pub fn set_message_bus(&mut self, message_bus: Rc<RefCell<MessageBus>>) {
     self.message_bus = message_bus;
   }
 
@@ -134,6 +134,7 @@ impl Ppu {
     self.bus.set_mapper(mapper);
   }
 
+  #[deprecated]
   pub fn reset(&mut self) {
     self.long_sprites = false;
     self.generate_interrupt = false;

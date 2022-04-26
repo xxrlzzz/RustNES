@@ -1,7 +1,5 @@
 /.vscode
 
-/assets
-
 /target
 
 Cargo.lock
