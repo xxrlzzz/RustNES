@@ -1,3 +1,4 @@
+pub mod serializer;
 pub mod types;
 
 pub fn bit_eq<T: std::ops::BitAndAssign + PartialEq + Copy>(a: T, b: T) -> bool {

@@ -14,7 +14,7 @@ struct Args {
   #[clap(short, long, default_value = "2.0")]
   scale: f32,
 
-  #[clap(long, default_value = "assets/save/saved.json")]
+  #[clap(long, default_value = "save/saved.json")]
   save_path: String,
 }
 
@@ -28,4 +28,5 @@ fn main() {
   let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
 
   emulator.run(&args.rom_path);
+  // rust_nes::gl_helper::launch_window();
 }

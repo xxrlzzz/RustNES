@@ -1,5 +1,5 @@
+use image::{Pixel, RgbaImage};
 use serde::{Deserialize, Serialize};
-use sfml::graphics::Color;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
@@ -13,10 +13,9 @@ use crate::bus::main_bus::{
 use crate::bus::message_bus::{Message, MessageBus};
 use crate::bus::picture_bus::PictureBus;
 use crate::common::bit_eq;
+use crate::common::serializer::*;
 use crate::common::types::*;
 use crate::mapper::Mapper;
-
-use self::palette_colors::{color_vec_deser, color_vec_ser};
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 enum PipelineState {
@@ -79,8 +78,8 @@ pub struct Ppu {
   sprite_page: CharacterPage,
 
   data_address_increment: Address,
-  #[serde(serialize_with = "color_vec_ser", deserialize_with = "color_vec_deser")]
-  picture_buffer: Vec<Vec<Color>>,
+  #[serde(serialize_with = "rgba_ser", deserialize_with = "rgba_deser")]
+  image: RgbaImage,
   #[serde(skip)]
   message_bus: Rc<RefCell<MessageBus>>,
 }
@@ -120,8 +119,8 @@ impl Ppu {
       sprite_page: CharacterPage::Low,
 
       data_address_increment: 0,
-      picture_buffer: vec![vec![Color::MAGENTA; VISIBLE_SCANLINES]; SCANLINE_VISIBLE_DOTS],
 
+      image: RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32),
       message_bus: message_bus,
     }
   }
@@ -375,9 +374,8 @@ impl Ppu {
     } else {
       0
     };
-
-    self.picture_buffer[x as usize][y as usize] =
-      palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize];
+    let color = palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize];
+    self.image.put_pixel(x as u32, y as u32, color.to_rgba())
   }
 
   fn render_step2(&mut self) {
@@ -415,7 +413,7 @@ impl Ppu {
     self
       .message_bus
       .borrow_mut()
-      .push(Message::PpuRender(self.picture_buffer.clone()));
+      .push(Message::PpuRender(self.image.clone()));
   }
 
   fn vertical_blank(&mut self) {

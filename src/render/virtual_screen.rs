@@ -1,3 +1,4 @@
+use image::RgbaImage;
 use sfml::graphics::{Color, Drawable, PrimitiveType, RenderStates, RenderTarget, VertexArray};
 use sfml::system::{Vector2f, Vector2u};
 
@@ -63,30 +64,22 @@ impl VirtualScreen {
         self.vertices[index + 5].position = coord_top_left;
         self.vertices[index + 5].color = color;
 
-        index += 6;
+        index += TWO_TRIANGLE_POINTS;
       }
     }
   }
 
-  // fn set_pixel(&mut self, x: usize, y: usize, color: Color) {
-  //   let index = (x * self.screen_size.y as usize + y) * 6;
-  //   // if index >= self.vertices.vertex_count() {
-  //   //   return;
-  //   // }
-  //   for i in 0..TWO_TRIANGLE_POINTS {
-  //     self.vertices[index + i].color = color;
-  //   }
-  // }
-
-  pub fn set_picture(&mut self, picture_buffer: &Vec<Vec<Color>>) {
+  pub fn set_picture(&mut self, picture_buffer: RgbaImage) {
     let mut index = 0;
     for x in 0..self.screen_size.x as usize {
       for y in 0..self.screen_size.y as usize {
         for i in 0..TWO_TRIANGLE_POINTS {
-          self.vertices[index + i].color = picture_buffer[x][y];
+          let pix = picture_buffer.get_pixel(x as u32, y as u32);
+
+          self.vertices[index + i].color =
+            sfml::graphics::Color::rgba(pix.0[0], pix.0[1], pix.0[2], pix.0[3]);
         }
-        index += 6;
-        // self.set_pixel(x, y, picture_buffer[x][y]);
+        index += TWO_TRIANGLE_POINTS;
       }
     }
   }

@@ -1,44 +1,38 @@
+use image::RgbaImage;
 use queues::*;
-use sfml::graphics::Color;
 
 #[derive(Debug, Clone)]
 pub enum Message {
   CpuInterrupt,
-  PpuRender(Vec<Vec<Color>>),
+  PpuRender(RgbaImage),
 }
 
 #[derive(Default)]
-pub struct MessageBus {
-  queue: Queue<Message>,
-}
+pub struct MessageBus(Queue<Message>);
 
 impl MessageBus {
   pub fn new() -> Self {
-    Self {
-      queue: Queue::new(),
-    }
+    Self { 0: Queue::new() }
   }
 
   pub fn push(&mut self, msg: Message) -> bool {
-    match self.queue.add(msg) {
-      Ok(_) => true,
-      Err(_) => false,
-    }
+    self.0.add(msg).is_ok()
   }
 
   pub fn pop(&mut self) -> Option<Message> {
-    let front = self.queue.remove();
-    match front {
-      Ok(msg) => Some(msg),
-      Err(_) => None,
-    }
+    self.0.remove().ok()
   }
 
   pub fn peek(&mut self) -> Option<Message> {
-    let front = self.queue.peek();
-    match front {
-      Ok(msg) => Some(msg),
-      Err(_) => None,
-    }
+    self.0.peek().ok()
+  }
+}
+
+impl Iterator for MessageBus {
+  type Item = Message;
+  fn next(&mut self) -> Option<Message> {
+    let r = self.0.peek().ok();
+    let _ = self.0.remove();
+    r
   }
 }
