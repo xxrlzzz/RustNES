@@ -1,20 +1,21 @@
 use clap::Parser;
 
-use rust_nes::{apu::portaudio_player::PortAudioPlayer, controller, emulator, logger};
-
-const DEFAULT_SCREEN_SCALE: &str = "2.0";
+use rust_nes::{controller, emulator, logger};
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
 struct Args {
-  #[clap(short, long, default_value = "assets/test.nes")]
+  #[clap(short, long, default_value = "assets/mario.nes")]
   rom_path: String,
 
   #[clap(short, long, default_value = "assets/keybindings.ini")]
   key_binding_path: String,
 
-  #[clap(short, long, default_value = DEFAULT_SCREEN_SCALE)]
+  #[clap(short, long, default_value = "2.0")]
   scale: f32,
+
+  #[clap(long, default_value = "save/saved.json")]
+  save_path: String,
 }
 
 fn main() {
@@ -23,11 +24,9 @@ fn main() {
     Ok(_) => {}
   };
   let args = Args::parse();
-  let mut emulator = emulator::Emulator::new(args.scale);
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
-  let mut player = PortAudioPlayer::new();
-  player.init().unwrap();
+  let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
 
-  emulator.set_keys(p1_key, p2_key);
   emulator.run(&args.rom_path);
+  // rust_nes::gl_helper::launch_window();
 }

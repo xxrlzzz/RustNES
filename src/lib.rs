@@ -8,7 +8,7 @@ pub mod emulator;
 pub mod logger;
 pub mod mapper;
 pub mod ppu;
-pub mod virtual_screen;
+pub mod render;
 
 #[macro_use]
 extern crate ini;

@@ -1,12 +1,13 @@
-use log::{error, info, warn};
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
+use serde_bytes::Bytes;
 use serde_json::{json, Value};
-use sfml::window::Key;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::apu::Apu;
 use crate::common::types::*;
+use crate::controller::key_binding_parser::KeyType;
 use crate::controller::Controller;
 use crate::mapper::factory::load_mapper;
 use crate::mapper::Mapper;
@@ -35,7 +36,9 @@ pub trait RegisterHandler {
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct MainBus {
+  #[serde(with = "serde_bytes")]
   ram: Vec<Byte>,
+  #[serde(with = "serde_bytes")]
   ext_ram: Vec<Byte>,
   #[serde(skip)]
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
@@ -50,7 +53,7 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new(ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
+  pub fn new(apu: Rc<RefCell<Apu>>, ppu: Rc<RefCell<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
@@ -65,21 +68,15 @@ impl MainBus {
 
   pub fn save(&self) -> Value {
     json!({
-      "ram": serde_json::to_string(&self.ram).unwrap(),
-      "ext_ram":serde_json::to_string(&self.ext_ram).unwrap(),
+      "ram": serde_json::to_string(Bytes::new(&self.ram)).unwrap(),
+      "ext_ram":serde_json::to_string(Bytes::new(&self.ext_ram)).unwrap(),
       "mapper" : self.mapper.as_ref().map(|m| m.borrow().save()).unwrap_or(String::new()),
       "skip_dma_cycles": self.skip_dma_cycles,
       "mapper_type": self.mapper.as_ref().unwrap().borrow().mapper_type(),
     })
   }
 
-  pub fn load(
-    json: &serde_json::Value,
-    ppu: Rc<RefCell<Ppu>>,
-    apu: Rc<RefCell<Apu>>,
-    ctl1: Controller,
-    ctl2: Controller,
-  ) -> Self {
+  pub fn load(json: &serde_json::Value, ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
     let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
     let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
     let mapper = load_mapper(mapper_type as Byte, mapper_content);
@@ -89,10 +86,16 @@ impl MainBus {
       ext_ram: serde_json::from_str(json.get("ext_ram").unwrap().as_str().unwrap()).unwrap(),
       mapper: Some(mapper),
       registers: vec![ppu, apu],
-      control1: ctl1,
-      control2: ctl2,
+      control1: Controller::new(),
+      control2: Controller::new(),
       skip_dma_cycles: json.get("skip_dma_cycles").unwrap().as_bool().unwrap(),
     }
+  }
+
+  #[cfg(feature = "use_gl")]
+  pub fn set_window(&mut self, window: Rc<RefCell<glfw::Window>>) {
+    self.control1.set_window(window.clone());
+    self.control2.set_window(window)
   }
 
   pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
@@ -102,11 +105,7 @@ impl MainBus {
     }
   }
 
-  pub fn control(&self) -> (Controller, Controller) {
-    (self.control1.clone(), self.control2.clone())
-  }
-
-  pub fn set_controller_keys(&mut self, p1: Vec<Key>, p2: Vec<Key>) {
+  pub fn set_controller_keys(&mut self, p1: Vec<KeyType>, p2: Vec<KeyType>) {
     self.control1.set_key_bindings(p1);
     self.control2.set_key_bindings(p2);
   }
