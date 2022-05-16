@@ -1,20 +1,22 @@
-pub mod portaudio_player;
-pub mod sound_filter;
-pub mod sound_wave;
+// #[cfg(not(target_os = "android"))]
+#[cfg(target = "use_gl")]
+mod portaudio_player;
+mod sound_filter;
+mod sound_wave;
 
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::{
   bus::main_bus::{IORegister, RegisterHandler, APU_ADDR, JOY2},
-  common::{
-    bit_eq,
-    types::{Address, Byte},
-  },
+  common::*,
 };
 
+// #[cfg(not(target_os = "android"))]
+#[cfg(target = "use_gl")]
+use self::portaudio_player::PortAudioPlayer;
+
 use self::{
-  portaudio_player::PortAudioPlayer,
   sound_filter::{Filter, SoundFilter, SoundFilterChain},
   sound_wave::{Noise, Pulse, Triangle, DMC},
 };
@@ -44,6 +46,9 @@ pub struct Apu {
   frame_period: Byte,
   frame_value: Byte,
   frame_irq: bool,
+
+  // #[cfg(not(target_os = "android"))]
+  #[cfg(target = "use_gl")]
   #[serde(skip)]
   player: PortAudioPlayer,
   sample_rate: f64,
@@ -62,13 +67,26 @@ pub const CPU_FREQUENCY: u32 = 1788908;
 const FRAME_COUNTER_RATE: f64 = CPU_FREQUENCY as f64 / 240.0;
 impl Apu {
   pub fn new() -> Self {
+    // #[cfg(not(target_os = "android"))]
+
+    #[cfg(target = "use_gl")]
     let mut player = PortAudioPlayer::new();
+
+    // #[cfg(not(target_os = "android"))]
+
+    #[cfg(target = "use_gl")]
     let sample_rate = player.init().unwrap() as f32;
+
+    #[cfg(feature = "use_sdl2")]
+    let sample_rate = 44100.0;
     Self {
       cycle: 0,
       frame_period: 0,
       frame_value: 0,
       frame_irq: false,
+
+      // #[cfg(not(target_os = "android"))]
+      #[cfg(target = "use_gl")]
       player,
       sample_rate: CPU_FREQUENCY as f64 / sample_rate as f64,
       pulse1: Pulse::new(1),
@@ -84,6 +102,8 @@ impl Apu {
     }
   }
   pub fn start(&mut self) {
+    // #[cfg(not(target_os = "android"))]
+    #[cfg(target = "use_gl")]
     match self.player.start() {
       Ok(_) => {}
       Err(e) => {
@@ -92,6 +112,9 @@ impl Apu {
     }
   }
   pub fn stop(&mut self) {
+    // #[cfg(not(target_os = "android"))]
+
+    #[cfg(target = "use_gl")]
     match self.player.stop() {
       Ok(_) => {}
       Err(e) => {
@@ -129,6 +152,9 @@ impl Apu {
     if sample != 0. {
       // info!("sample: {:?} {:?}", after_sample, sample);
     }
+
+    // #[cfg(not(target_os = "android"))]
+    #[cfg(target = "use_gl")]
     self.player.send_sample(after_sample);
   }
 

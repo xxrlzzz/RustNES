@@ -2,7 +2,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 
 use crate::cartridge::{Cartridge, BANK_SIZE};
-use crate::common::types::*;
+use crate::common::*;
 use crate::mapper::Mapper;
 
 use super::factory::CNROM;

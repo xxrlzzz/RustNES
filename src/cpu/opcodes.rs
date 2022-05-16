@@ -1,4 +1,4 @@
-use crate::common::types::*;
+use crate::common::*;
 
 pub const INSTRUCTION_MODE_MASK: Byte = 0x3;
 pub const OPERATION_MASK: Byte = 0xe0;
@@ -24,7 +24,7 @@ pub mod branch_on_flag {
 }
 
 pub mod operation_implied {
-  use crate::common::types::*;
+  use crate::common::*;
   pub const NOP: Byte = 0xea;
   pub const BRK: Byte = 0x00;
   pub const JSR: Byte = 0x20;

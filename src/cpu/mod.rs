@@ -2,8 +2,7 @@ use std::convert::Into;
 
 use self::opcodes::*;
 use crate::bus::main_bus::MainBus;
-use crate::common::bit_eq;
-use crate::common::types::*;
+use crate::common::*;
 use log::warn;
 use serde::Deserialize;
 use serde::Serialize;
@@ -23,7 +22,7 @@ const DMC_CYCLES: u32 = 4;
 const INTERRUPT_CYCLES: u32 = 7;
 
 mod flag_const {
-  use crate::common::types::*;
+  use crate::common::*;
   // 7 6 5 4 3 2 1 0
   // N V - B D I Z C
 

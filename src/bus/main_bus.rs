@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::apu::Apu;
-use crate::common::types::*;
+use crate::common::*;
 use crate::controller::key_binding_parser::KeyType;
 use crate::controller::Controller;
 use crate::mapper::factory::load_mapper;
@@ -90,12 +90,6 @@ impl MainBus {
       control2: Controller::new(),
       skip_dma_cycles: json.get("skip_dma_cycles").unwrap().as_bool().unwrap(),
     }
-  }
-
-  #[cfg(feature = "use_gl")]
-  pub fn set_window(&mut self, window: Rc<RefCell<glfw::Window>>) {
-    self.control1.set_window(window.clone());
-    self.control2.set_window(window)
   }
 
   pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {

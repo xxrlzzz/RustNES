@@ -171,7 +171,7 @@ pub(crate) unsafe fn create_vao() -> u32 {
   VAO
 }
 
-pub(crate) unsafe fn create_texture() -> u32 {
+pub(crate) unsafe fn create_texture(shader: u32) -> u32 {
   let mut texture: u32 = 1;
   gl::GenTextures(1, &mut texture);
   gl::BindTexture(gl::TEXTURE_2D, texture);
@@ -179,6 +179,12 @@ pub(crate) unsafe fn create_texture() -> u32 {
   gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
   gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
   gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+
+  gl::Uniform1i(
+    gl::GetUniformLocation(shader, "texture".as_ptr() as *const i8),
+    0,
+  );
+  gl::BindTexture(gl::TEXTURE_2D, 0);
   texture
 }
 
@@ -235,17 +241,15 @@ mod test {
     #[allow(non_snake_case)]
     let (shader, VAO) = unsafe { (compile_shader(), create_vao()) };
     let texture = unsafe {
-      let texture = create_texture();
+      let texture = create_texture(shader);
 
+      gl::BindTexture(gl::TEXTURE_2D, texture);
       let img = image::open(&Path::new("assets/logo.png")).expect("Failed to open image.");
       let rgba = img.to_rgba8();
       set_texture(rgba);
       gl::GenerateMipmap(gl::TEXTURE_2D);
       gl::BindTexture(gl::TEXTURE_2D, 0);
-      gl::Uniform1i(
-        gl::GetUniformLocation(shader, "texture".as_ptr() as *const i8),
-        0,
-      );
+
       texture
     };
     // render loop

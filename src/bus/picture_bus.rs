@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
-use crate::common::types::*;
+use crate::common::*;
 use crate::mapper::Mapper;
 
 mod name_table_mirroring {

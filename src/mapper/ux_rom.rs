@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::vec::Vec;
 
 use crate::cartridge::Cartridge;
-use crate::common::types::*;
+use crate::common::*;
 use crate::mapper::Mapper;
 
 use super::factory::CNROM;

@@ -1,5 +1,5 @@
 use crate::cartridge::Cartridge;
-use crate::common::types::Byte;
+use crate::common::Byte;
 use crate::mapper::cn_rom::CnRom;
 use crate::mapper::n_rom::NRom;
 use crate::mapper::ux_rom::UxRom;

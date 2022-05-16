@@ -1,14 +1,15 @@
-pub mod apu;
-pub mod bus;
-pub mod cartridge;
-pub mod common;
+mod apu;
+mod bus;
+mod cartridge;
+mod common;
 pub mod controller;
-pub mod cpu;
+mod cpu;
 pub mod emulator;
+mod instance;
 pub mod logger;
-pub mod mapper;
-pub mod ppu;
-pub mod render;
+mod mapper;
+mod ppu;
+mod render;
 
 #[macro_use]
 extern crate ini;
@@ -16,3 +17,5 @@ extern crate ini;
 extern crate lazy_static;
 extern crate queues;
 extern crate serde;
+
+pub mod android;

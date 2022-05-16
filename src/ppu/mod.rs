@@ -12,9 +12,8 @@ use crate::bus::main_bus::{
 };
 use crate::bus::message_bus::{Message, MessageBus};
 use crate::bus::picture_bus::PictureBus;
-use crate::common::bit_eq;
 use crate::common::serializer::*;
-use crate::common::types::*;
+use crate::common::*;
 use crate::mapper::Mapper;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -121,7 +120,7 @@ impl Ppu {
       data_address_increment: 0,
 
       image: RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32),
-      message_bus: message_bus,
+      message_bus,
     }
   }
 
@@ -255,7 +254,7 @@ impl Ppu {
     let y = self.scanline as i32;
 
     if self.show_background {
-      let x_fine = (self.fine_x_scroll + x) % 8;
+      let x_fine = (self.fine_x_scroll + x % 8) % 8;
       if !self.hide_edge_background || x >= 8 {
         // Fetch tile
         // Mask off fine y
@@ -414,6 +413,7 @@ impl Ppu {
       .message_bus
       .borrow_mut()
       .push(Message::PpuRender(self.image.clone()));
+    // log::info!("post render");
   }
 
   fn vertical_blank(&mut self) {
@@ -568,36 +568,16 @@ impl RegisterHandler for Ppu {
 
   fn write(&mut self, address: IORegister, value: Byte) -> bool {
     match address {
-      PPU_CTRL => {
-        self.control(value);
-        true
-      }
-      PPU_MASK => {
-        self.set_mask(value);
-        true
-      }
-      OAM_ADDR => {
-        self.set_oam_address(value);
-        true
-      }
-      OAM_DATA => {
-        self.set_oam_data(value);
-        true
-      }
-      PPU_SCROL => {
-        self.set_scroll(value);
-        true
-      }
-      PPU_ADDR => {
-        self.set_data_address(value as Address);
-        true
-      }
-      PPU_DATA => {
-        self.set_data(value);
-        true
-      }
-      _ => false,
+      PPU_CTRL => self.control(value),
+      PPU_MASK => self.set_mask(value),
+      OAM_ADDR => self.set_oam_address(value),
+      OAM_DATA => self.set_oam_data(value),
+      PPU_SCROL => self.set_scroll(value),
+      PPU_ADDR => self.set_data_address(value as Address),
+      PPU_DATA => self.set_data(value),
+      _ => return false,
     }
+    true
   }
 
   fn dma(&mut self, page: *const Byte) -> bool {

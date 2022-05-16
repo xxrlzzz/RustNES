@@ -26,7 +26,6 @@ fn main() {
   let args = Args::parse();
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
   let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
-
-  emulator.run(&args.rom_path);
-  // rust_nes::gl_helper::launch_window();
+  let instance = emulator.create_instance(&args.rom_path);
+  emulator.run(instance);
 }

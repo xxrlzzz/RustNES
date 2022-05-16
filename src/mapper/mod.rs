@@ -5,7 +5,7 @@ pub mod ux_rom;
 
 use serde::Serialize;
 
-use crate::common::types::*;
+use crate::common::*;
 
 pub trait Mapper {
   fn write_prg(&mut self, addr: Address, value: Byte);

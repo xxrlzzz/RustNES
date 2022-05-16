@@ -1,9 +1,9 @@
-use crate::common::bit_eq;
-use crate::common::types::*;
+use crate::common::*;
 use log::{error, info};
 use serde::Deserialize;
 use serde::Serialize;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
 use std::vec::Vec;
@@ -72,6 +72,11 @@ impl Cartridge {
     return true;
   }
 
+  pub fn load_from_data(&mut self, data: &[u8]) -> bool {
+    let reader = BufReader::new(data);
+    self.load_from_buf(reader)
+  }
+
   pub fn load_from_file(&mut self, path_str: &str) -> bool {
     info!("Reading ROM content from {}", path_str);
     let path = Path::new(path_str);
@@ -80,12 +85,19 @@ impl Cartridge {
       error!("Could not open ROM file {}", path_str);
       return false;
     }
-    let mut file_reader = std::io::BufReader::new(rom_file_result.unwrap());
+    let file_reader = BufReader::new(rom_file_result.unwrap());
+    self.load_from_buf(file_reader)
+  }
+
+  fn load_from_buf<T>(&mut self, mut reader: BufReader<T>) -> bool
+  where
+    T: std::io::Read,
+  {
     let mut header = Vec::with_capacity(0x10);
     let mut banks = 0;
     let mut vbanks = 0;
     let mut read_size: usize;
-    file_reader
+    reader
       .by_ref()
       .take(0x10)
       .read_to_end(&mut header)
@@ -95,7 +107,7 @@ impl Cartridge {
     }
     read_size = BANK_SIZE * banks as usize;
     self.prg_rom.reserve(read_size);
-    if let Err(e) = file_reader
+    if let Err(e) = reader
       .by_ref()
       .take(read_size as u64)
       .read_to_end(&mut self.prg_rom)
@@ -107,17 +119,14 @@ impl Cartridge {
     if vbanks != 0 {
       read_size = 0x2000 * vbanks as usize;
       self.chr_rom.reserve(read_size as usize);
-      if let Err(e) = file_reader
-        .take(read_size as u64)
-        .read_to_end(&mut self.chr_rom)
-      {
+      if let Err(e) = reader.take(read_size as u64).read_to_end(&mut self.chr_rom) {
         error!("Read ROM file failed {}", e);
         return false;
       }
     } else {
       info!("Cartridge with CHR-RAM");
     }
-    return true;
+    true
   }
 
   pub fn get_rom(&self) -> &Vec<Byte> {
