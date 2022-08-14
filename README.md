@@ -23,4 +23,4 @@ Note due to the performance issue, you should run in release mode to get enough 
 - [ ] Test more nes games and upload result.
 - [x] Pause/Resume/Save 
 - [x] Android support v1
-- [ ] Android keybinding.
+- [x] Android keybinding.

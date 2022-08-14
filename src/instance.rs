@@ -13,7 +13,6 @@ use crate::{
   apu::Apu,
   bus::{main_bus::MainBus, message_bus::MessageBus, picture_bus::PictureBus},
   cartridge::Cartridge,
-  common::{sample_profile, MatrixType},
   cpu::Cpu,
   emulator::RuntimeConfig,
   mapper::factory,
@@ -220,20 +219,14 @@ impl Instance {
     Ok(Instance::new(apu, cpu, ppu))
   }
 
-  pub(crate) fn step(&mut self, matrix: &mut MatrixType) {
-    let mut now = Instant::now();
+  pub(crate) fn step(&mut self) {
     {
       let mut ppu = self.ppu.borrow_mut();
       ppu.step();
       ppu.step();
       ppu.step();
     }
-    sample_profile(&mut now, "ppu", matrix);
-
     self.cpu.step();
-    sample_profile(&mut now, "cpu", matrix);
-
     self.apu.borrow_mut().step();
-    sample_profile(&mut now, "apu", matrix);
   }
 }

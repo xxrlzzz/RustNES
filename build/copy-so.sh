@@ -1,3 +1,4 @@
+# !/bin/sh
 AARC64_TARGET=aarch64-linux-android
 AARC64_DIST_DIR=app/src/main/jniLibs/arm64-v8a/
 

@@ -13,12 +13,10 @@ use std::time::{Duration, Instant};
 
 use crate::apu::CPU_FREQUENCY;
 use crate::bus::message_bus::{Message, MessageBus};
-use crate::common::{sample_profile, MatrixType};
 use crate::controller::key_binding_parser::KeyType;
 use crate::cpu::{Cpu, InterruptType};
 use crate::instance::Instance;
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
-use crate::CONFIG;
 
 const NES_VIDEO_WIDTH: u32 = SCANLINE_VISIBLE_DOTS as u32;
 const NES_VIDEO_HEIGHT: u32 = VISIBLE_SCANLINES as u32;
@@ -83,35 +81,23 @@ impl Emulator {
 
   fn one_frame(&mut self, instance: &mut Instance) -> Duration {
     let mut iter_time = 0;
-    let mut matrix = MatrixType::default();
     instance.update_timer();
     for i in 0..CPU_FREQUENCY {
-      instance.step(&mut matrix);
+      instance.step();
       iter_time = i;
 
-      let mut now = Instant::now();
       self.consume_message(&mut instance.cpu);
-      sample_profile(&mut now, "msg", &mut matrix);
-      let cost = Instant::now() - instance.cycle_timer;
-      if instance.elapsed_time < CPU_CYCLE_DURATION || cost > FRAME_DURATION {
+
+      if i % 100000 == 0 && Instant::now() - instance.cycle_timer > FRAME_DURATION {
+        break;
+      }
+      if instance.elapsed_time < CPU_CYCLE_DURATION {
         break;
       }
       instance.elapsed_time -= CPU_CYCLE_DURATION;
     }
     let cost = Instant::now() - instance.cycle_timer;
-    if CONFIG.profile {
-      info!(
-        "last frame toke {:?} for {} times. 
-          ppu total cost:{}, cpu total cost:{}, 
-          apu total cost:{}, msg total cost:{}",
-        cost,
-        iter_time,
-        matrix["ppu"] / 1000,
-        matrix["cpu"] / 1000,
-        matrix["apu"] / 1000,
-        matrix["msg"] / 1000,
-      );
-    }
+    info!("last frame toke {:?} for {} times.", cost, iter_time);
 
     cost
   }
@@ -289,9 +275,8 @@ impl Emulator {
         Keycode::F2 => instance.toggle_pause(),
         Keycode::F3 => {
           if instance.stat.is_pausing() {
-            let mut matrix = MatrixType::default();
             for _ in 0..29781 {
-              instance.step(&mut matrix);
+              instance.step();
               self.consume_message(&mut instance.cpu);
             }
           }
