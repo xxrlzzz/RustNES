@@ -82,6 +82,7 @@ pub struct Ppu {
   #[serde(skip)]
   message_bus: Rc<RefCell<MessageBus>>,
 }
+
 impl Ppu {
   pub fn new(pic_bus: PictureBus, message_bus: Rc<RefCell<MessageBus>>) -> Self {
     Self {

@@ -1,3 +1,7 @@
 <resources>
-    <string name="app_name">Game</string>
+    <string name="app_name">NES-Simulator</string>
+    <string name="btn_a">A</string>
+    <string name="btn_b">B</string>
+    <string name="btn_start">Start</string>
+    <string name="btn_select">Select</string>
 </resources>

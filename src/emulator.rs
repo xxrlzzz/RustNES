@@ -1,6 +1,6 @@
 use core::time;
 use image::{ImageBuffer, Rgba};
-use log::{debug, error, info};
+use log::{error, info};
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::{BlendMode, Texture};
 use sdl2::surface::Surface;
@@ -13,11 +13,12 @@ use std::time::{Duration, Instant};
 
 use crate::apu::CPU_FREQUENCY;
 use crate::bus::message_bus::{Message, MessageBus};
-use crate::common::MatrixType;
+use crate::common::{sample_profile, MatrixType};
 use crate::controller::key_binding_parser::KeyType;
 use crate::cpu::{Cpu, InterruptType};
 use crate::instance::Instance;
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
+use crate::CONFIG;
 
 const NES_VIDEO_WIDTH: u32 = SCANLINE_VISIBLE_DOTS as u32;
 const NES_VIDEO_HEIGHT: u32 = VISIBLE_SCANLINES as u32;
@@ -83,27 +84,35 @@ impl Emulator {
   fn one_frame(&mut self, instance: &mut Instance) -> Duration {
     let mut iter_time = 0;
     let mut matrix = MatrixType::default();
+    instance.update_timer();
     for i in 0..CPU_FREQUENCY {
       instance.step(&mut matrix);
-      self.consume_message(&mut instance.cpu);
+      iter_time = i;
 
-      if instance.elapsed_time < CPU_CYCLE_DURATION {
-        iter_time = i;
+      let mut now = Instant::now();
+      self.consume_message(&mut instance.cpu);
+      sample_profile(&mut now, "msg", &mut matrix);
+      let cost = Instant::now() - instance.cycle_timer;
+      if instance.elapsed_time < CPU_CYCLE_DURATION || cost > FRAME_DURATION {
         break;
       }
       instance.elapsed_time -= CPU_CYCLE_DURATION;
     }
     let cost = Instant::now() - instance.cycle_timer;
-    debug!(
-      "last frame toke {:?} for {} times. 
-        ppu total cost:{}, cpu total cost:{}, 
-        apu total cost:{}",
-      cost,
-      iter_time,
-      matrix["ppu"] / 1000,
-      matrix["cpu"] / 1000,
-      matrix["apu"] / 1000,
-    );
+    if CONFIG.profile {
+      info!(
+        "last frame toke {:?} for {} times. 
+          ppu total cost:{}, cpu total cost:{}, 
+          apu total cost:{}, msg total cost:{}",
+        cost,
+        iter_time,
+        matrix["ppu"] / 1000,
+        matrix["cpu"] / 1000,
+        matrix["apu"] / 1000,
+        matrix["msg"] / 1000,
+      );
+    }
+
     cost
   }
 
@@ -162,7 +171,6 @@ impl Emulator {
       }
 
       if instance.can_run() {
-        instance.update_timer();
         let cost = self.one_frame(&mut instance);
         if FRAME_DURATION > cost {
           thread::sleep(FRAME_DURATION - cost);

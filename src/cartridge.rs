@@ -82,7 +82,7 @@ impl Cartridge {
     let path = Path::new(path_str);
     let rom_file_result = File::open(path);
     if let Err(_) = rom_file_result {
-      error!("Could not open ROM file {}", path_str);
+      error!("Can't the open ROM file {}", path_str);
       return false;
     }
     let file_reader = BufReader::new(rom_file_result.unwrap());

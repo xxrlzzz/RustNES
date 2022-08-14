@@ -46,4 +46,5 @@ pub extern "C" fn android_main(argc: std::os::raw::c_int, argv: *const *const u8
   // info!("rom_path: {}\n rom_data: {}", rom_path, rom_data);
   let instance = emulator.create_instance_from_data(mario);
   emulator.run(instance);
+  info!("emulator exit");
 }

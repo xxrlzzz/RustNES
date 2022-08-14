@@ -53,7 +53,7 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new(apu: Rc<RefCell<Apu>>, ppu: Rc<RefCell<Ppu>>) -> Self {
+  pub fn new<'a>(apu: Rc<RefCell<Apu>>, ppu: Rc<RefCell<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],

@@ -1,6 +1,6 @@
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 use std::vec::Vec;
 
@@ -55,6 +55,22 @@ impl PictureBus {
       self.name_table2
     } else {
       self.name_table3
+    }
+  }
+
+  pub fn start_read_session(&self) -> Ref<dyn Mapper> {
+    self.mapper.as_ref().unwrap().borrow()
+  }
+
+  pub fn read_with_map(&self, addr: Address, mapper: Ref<dyn Mapper>) -> Byte {
+    if addr < 0x2000 {
+      mapper.read_chr(addr)
+    } else if addr < 0x3EFF {
+      self.ram[self.get_name_table(addr) + (addr & 0x3FF) as usize]
+    } else if addr < 0x3FFF {
+      self.palette[(addr & 0x1F) as usize]
+    } else {
+      0
     }
   }
 

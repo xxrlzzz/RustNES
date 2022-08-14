@@ -13,7 +13,7 @@ android {
         if (buildAsApplication) {
             applicationId "org.libsdl.testgles"
         }
-        minSdkVersion 16
+        minSdkVersion 17
         targetSdkVersion 31
         versionCode 1
         versionName "1.0"

@@ -19,13 +19,13 @@ impl MessageBus {
     self.0.add(msg).is_ok()
   }
 
-  pub fn pop(&mut self) -> Option<Message> {
-    self.0.remove().ok()
-  }
+  // pub fn pop(&mut self) -> Option<Message> {
+  //   self.0.remove().ok()
+  // }
 
-  pub fn peek(&mut self) -> Option<Message> {
-    self.0.peek().ok()
-  }
+  // pub fn peek(&mut self) -> Option<Message> {
+  //   self.0.peek().ok()
+  // }
 }
 
 impl Iterator for MessageBus {

@@ -19,3 +19,9 @@ extern crate queues;
 extern crate serde;
 
 pub mod android;
+
+struct Config {
+  profile: bool,
+}
+
+static CONFIG: Config = Config { profile: false };
