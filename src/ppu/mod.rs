@@ -1,7 +1,6 @@
 use image::{Pixel, RgbaImage};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::vec::Vec;
 
 mod palette_colors;
@@ -10,7 +9,7 @@ use crate::bus::main_bus::{
   IORegister, RegisterHandler, OAM_ADDR, OAM_DATA, PPU_ADDR, PPU_CTRL, PPU_DATA, PPU_MASK,
   PPU_SCROL, PPU_STATUS,
 };
-use crate::bus::message_bus::{Message, MessageBus};
+use crate::bus::message_bus::Message;
 use crate::bus::picture_bus::PictureBus;
 use crate::common::serializer::*;
 use crate::common::*;
@@ -77,16 +76,17 @@ pub struct Ppu {
   sprite_page: CharacterPage,
 
   data_address_increment: Address,
-  #[serde(serialize_with = "rgba_ser", deserialize_with = "rgba_deser")]
-  image: RgbaImage,
   #[serde(skip)]
-  message_bus: Rc<RefCell<MessageBus>>,
+  // #[serde(serialize_with = "rgba_ser", deserialize_with = "rgba_deser")]
+  pub(crate) image: RgbaImage,
+  #[serde(skip)]
+  message_sx: Option<mpsc::Sender<Message>>,
 }
 
 impl Ppu {
-  pub fn new(pic_bus: PictureBus, message_bus: Rc<RefCell<MessageBus>>) -> Self {
+  pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
     Self {
-      bus: pic_bus,
+      bus: PictureBus::new(),
       sprite_memory: vec![0; 64 * 4],
       scanline_sprites: vec![],
 
@@ -121,15 +121,15 @@ impl Ppu {
       data_address_increment: 0,
 
       image: RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32),
-      message_bus,
+      message_sx: Some(message_sx),
     }
   }
 
-  pub fn set_message_bus(&mut self, message_bus: Rc<RefCell<MessageBus>>) {
-    self.message_bus = message_bus;
+  pub fn set_message_bus(&mut self, message_sx: mpsc::Sender<Message>) {
+    self.message_sx = Some(message_sx);
   }
 
-  pub fn set_mapper_for_bus(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
+  pub fn set_mapper_for_bus(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
     self.bus.set_mapper(mapper);
   }
 
@@ -253,6 +253,7 @@ impl Ppu {
 
     let x = (self.cycle - 1) as u8;
     let y = self.scanline as i32;
+    let bus = &self.bus;
 
     if self.show_background {
       let x_fine = (self.fine_x_scroll + x % 8) % 8;
@@ -260,7 +261,7 @@ impl Ppu {
         // Fetch tile
         // Mask off fine y
         let mut addr = 0x2000 | (self.data_address & 0x0FFF);
-        let tile = self.bus.read(addr) as Address;
+        let tile = bus.read(addr) as Address;
 
         // Fetch pattern
         // Each pattern occupies 16 bytes, so multiply by 16
@@ -270,9 +271,9 @@ impl Ppu {
         addr |= (self.background_page as u16) << 12;
         // Get the corresponding bit determined by (8 - x_fine)
         // from the right bit 0 of palette entry
-        bg_color = (self.bus.read(addr) >> (7 ^ x_fine)) & 1;
+        bg_color = (bus.read(addr) >> (7 ^ x_fine)) & 1;
         // bit 1
-        bg_color |= (self.bus.read(addr + 8) >> (7 ^ x_fine) & 1) << 1;
+        bg_color |= (bus.read(addr + 8) >> (7 ^ x_fine) & 1) << 1;
 
         // flag used to calculate final pixel with the sprite pixel
         bg_opaque = bg_color != 0;
@@ -282,7 +283,7 @@ impl Ppu {
           | (self.data_address & 0x0C00)
           | ((self.data_address >> 4) & 0x38)
           | ((self.data_address >> 2) & 0x07);
-        let attribute = self.bus.read(addr);
+        let attribute = bus.read(addr);
         let shift = (self.data_address >> 4) & 4 | (self.data_address & 2);
         // Extract and set the upper two bits for the color
         bg_color |= ((attribute >> shift) & 0x3) << 2;
@@ -345,9 +346,9 @@ impl Ppu {
         }
 
         // bit 0 of palette entry
-        spr_color |= (self.bus.read(addr) >> x_shift) & 1;
+        spr_color |= (bus.read(addr) >> x_shift) & 1;
         // bit 1
-        spr_color |= ((self.bus.read(addr + 8) >> x_shift) & 1) << 1;
+        spr_color |= ((bus.read(addr + 8) >> x_shift) & 1) << 1;
 
         spr_opaque = spr_color != 0;
         if !spr_opaque {
@@ -374,7 +375,7 @@ impl Ppu {
     } else {
       0
     };
-    let color = palette_colors::COLORS[self.bus.read_palette(palette_addr) as usize];
+    let color = palette_colors::COLORS[bus.read_palette(palette_addr) as usize];
     self.image.put_pixel(x as u32, y as u32, color.to_rgba())
   }
 
@@ -410,18 +411,32 @@ impl Ppu {
     self.scanline += 1;
     self.cycle = 0;
     self.pipeline_state = PipelineState::VerticalBlank;
-    self
-      .message_bus
-      .borrow_mut()
-      .push(Message::PpuRender(self.image.clone()));
+
     // log::info!("post render");
+    if let Err(e) = self
+      .message_sx
+      .as_ref()
+      .unwrap()
+      .send(Message::PpuRender(self.image.clone()))
+    {
+      log::error!("send error: #{:?}", e);
+      return;
+    }
   }
 
   fn vertical_blank(&mut self) {
     if self.cycle == 1 && self.scanline == (VISIBLE_SCANLINES + 1) {
       self.vblank = true;
       if self.generate_interrupt {
-        self.message_bus.borrow_mut().push(Message::CpuInterrupt);
+        if let Err(e) = self
+          .message_sx
+          .as_ref()
+          .unwrap()
+          .send(Message::CpuInterrupt)
+        {
+          log::error!("send error: #{:?}", e);
+          return;
+        }
       }
     }
 

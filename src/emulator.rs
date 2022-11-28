@@ -5,16 +5,12 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::{BlendMode, Texture};
 use sdl2::surface::Surface;
 use std::collections::HashSet;
-use std::rc::Rc;
 
-use std::cell::RefCell;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::apu::CPU_FREQUENCY;
-use crate::bus::message_bus::{Message, MessageBus};
 use crate::controller::key_binding_parser::KeyType;
-use crate::cpu::{Cpu, InterruptType};
 use crate::instance::Instance;
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
 
@@ -44,15 +40,11 @@ impl RuntimeConfig {
 }
 
 pub struct Emulator {
-  rgba: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
-  message_bus: Rc<RefCell<MessageBus>>,
   runtime_config: RuntimeConfig,
 }
 
 impl Emulator {
   pub fn new(screen_scale: f32, save_path: String, ctl1: Vec<KeyType>, ctl2: Vec<KeyType>) -> Self {
-    let message_bus = Rc::new(RefCell::new(MessageBus::new()));
-
     Self {
       runtime_config: RuntimeConfig {
         save_path,
@@ -60,38 +52,22 @@ impl Emulator {
         ctl1,
         ctl2,
       },
-
-      rgba: None,
-      message_bus,
-    }
-  }
-
-  fn consume_message(&mut self, cpu: &mut Cpu) {
-    for message in self.message_bus.take().into_iter() {
-      match message {
-        Message::CpuInterrupt => {
-          cpu.interrupt(InterruptType::NMI);
-        }
-        Message::PpuRender(frame) => {
-          self.rgba = Some(frame);
-        }
-      };
     }
   }
 
   fn one_frame(&mut self, instance: &mut Instance) -> Duration {
-    let mut iter_time = 0;
+    let mut iter_time = CPU_FREQUENCY;
     instance.update_timer();
-    for i in 0..CPU_FREQUENCY {
+    // 1789773 / 1000 * 16
+    for i in 0..28636 {
       instance.step();
-      iter_time = i;
 
-      self.consume_message(&mut instance.cpu);
-
-      if i % 100000 == 0 && Instant::now() - instance.cycle_timer > FRAME_DURATION {
+      if i % 3000 == 0 && Instant::now() - instance.cycle_timer > FRAME_DURATION {
+        iter_time = i;
         break;
       }
       if instance.elapsed_time < CPU_CYCLE_DURATION {
+        iter_time = i;
         break;
       }
       instance.elapsed_time -= CPU_CYCLE_DURATION;
@@ -148,8 +124,9 @@ impl Emulator {
       }
 
       // The rest of the game loop goes here...
-      if self.rgba.is_some() {
-        set_sdl2_texture(&mut texture, self.rgba.take().unwrap());
+      let mut rgba = instance.take_rgba();
+      if rgba.is_some() {
+        set_sdl2_texture(&mut texture, rgba.take().unwrap());
 
         // info!("update game screen");
         let _ = canvas.copy(&texture, None, None);
@@ -165,16 +142,16 @@ impl Emulator {
         thread::sleep(FRAME_DURATION);
       }
     }
+
+    instance.stop();
   }
 
   pub fn create_instance(&self, rom_path: &str) -> Instance {
-    Instance::init_rom_from_path(rom_path, &self.runtime_config, self.message_bus.clone())
-      .expect("Failed to load rom.")
+    Instance::init_rom_from_path(rom_path, &self.runtime_config).expect("Failed to load rom.")
   }
 
   pub fn create_instance_from_data(&self, rom_data: &[u8]) -> Instance {
-    Instance::init_rom_from_data(rom_data, &self.runtime_config, self.message_bus.clone())
-      .expect("Failed to load rom.")
+    Instance::init_rom_from_data(rom_data, &self.runtime_config).expect("Failed to load rom.")
   }
 
   #[cfg(feature = "use_gl")]
@@ -265,7 +242,7 @@ impl Emulator {
         keycode: Some(key), ..
       } => match key {
         Keycode::Z => instance.do_save(&runtime_config.save_path),
-        Keycode::X => match Instance::load(&runtime_config, self.message_bus.clone()) {
+        Keycode::X => match Instance::load(&runtime_config) {
           Ok(instance_load) => {
             *instance = instance_load;
             info!("load success")
@@ -277,7 +254,6 @@ impl Emulator {
           if instance.stat.is_pausing() {
             for _ in 0..29781 {
               instance.step();
-              self.consume_message(&mut instance.cpu);
             }
           }
         }

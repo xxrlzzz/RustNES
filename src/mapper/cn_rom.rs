@@ -63,3 +63,6 @@ impl Mapper for CnRom {
     CNROM
   }
 }
+
+unsafe impl Sync for CnRom {}
+unsafe impl Send for CnRom {}

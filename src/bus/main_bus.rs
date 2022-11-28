@@ -2,8 +2,7 @@ use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use serde_bytes::Bytes;
 use serde_json::{json, Value};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use crate::apu::Apu;
 use crate::common::*;
@@ -41,9 +40,9 @@ pub struct MainBus {
   #[serde(with = "serde_bytes")]
   ext_ram: Vec<Byte>,
   #[serde(skip)]
-  mapper: Option<Rc<RefCell<dyn Mapper>>>,
+  mapper: Option<Arc<Mutex<dyn Mapper + Send + Sync>>>,
   #[serde(skip)]
-  registers: Vec<Rc<RefCell<dyn RegisterHandler>>>,
+  registers: Vec<Arc<Mutex<dyn RegisterHandler>>>,
   #[serde(skip)]
   control1: Controller,
   #[serde(skip)]
@@ -53,7 +52,7 @@ pub struct MainBus {
 }
 
 impl MainBus {
-  pub fn new<'a>(apu: Rc<RefCell<Apu>>, ppu: Rc<RefCell<Ppu>>) -> Self {
+  pub fn new<'a>(apu: Arc<Mutex<Apu>>, ppu: Arc<Mutex<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
@@ -67,20 +66,21 @@ impl MainBus {
   }
 
   pub fn save(&self) -> Value {
+    let mapper = self.mapper.as_ref().unwrap().lock().unwrap();
     json!({
       "ram": serde_json::to_string(Bytes::new(&self.ram)).unwrap(),
       "ext_ram":serde_json::to_string(Bytes::new(&self.ext_ram)).unwrap(),
-      "mapper" : self.mapper.as_ref().map(|m| m.borrow().save()).unwrap_or(String::new()),
+      "mapper" : mapper.save(),
       "skip_dma_cycles": self.skip_dma_cycles,
-      "mapper_type": self.mapper.as_ref().unwrap().borrow().mapper_type(),
+      "mapper_type": mapper.mapper_type(),
     })
   }
 
-  pub fn load(json: &serde_json::Value, ppu: Rc<RefCell<Ppu>>, apu: Rc<RefCell<Apu>>) -> Self {
+  pub fn load(json: &serde_json::Value, ppu: Arc<Mutex<Ppu>>, apu: Arc<Mutex<Apu>>) -> Self {
     let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
     let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
     let mapper = load_mapper(mapper_type as Byte, mapper_content);
-    ppu.borrow_mut().set_mapper_for_bus(mapper.clone());
+    ppu.lock().unwrap().set_mapper_for_bus(mapper.clone());
     Self {
       ram: serde_json::from_str(json.get("ram").unwrap().as_str().unwrap()).unwrap(),
       ext_ram: serde_json::from_str(json.get("ext_ram").unwrap().as_str().unwrap()).unwrap(),
@@ -92,11 +92,11 @@ impl MainBus {
     }
   }
 
-  pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
-    self.mapper = Some(mapper);
-    if self.mapper.as_ref().unwrap().borrow().has_extended_ram() {
+  pub fn set_mapper(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
+    if mapper.lock().unwrap().has_extended_ram() {
       self.ext_ram.resize(0x2000, 0);
     }
+    self.mapper = Some(mapper);
   }
 
   pub fn set_controller_keys(&mut self, p1: Vec<KeyType>, p2: Vec<KeyType>) {
@@ -131,7 +131,7 @@ impl MainBus {
             let ptr = self.get_page_ptr(value);
             if let Some(ptr) = ptr {
               for reg in &mut self.registers {
-                if reg.borrow_mut().dma(ptr) {
+                if reg.lock().unwrap().dma(ptr) {
                   break;
                 }
               }
@@ -140,7 +140,7 @@ impl MainBus {
         }
         _ => {
           for reg in &mut self.registers {
-            if reg.borrow_mut().write(mapped_addr, value) {
+            if reg.lock().unwrap().write(mapped_addr, value) {
               break;
             }
           }
@@ -149,7 +149,14 @@ impl MainBus {
     } else if addr < 0x6000 {
       warn!("Expansion ROM write attempted. This currently unsupported");
     } else if addr < 0x8000 {
-      if self.mapper.as_ref().unwrap().borrow().has_extended_ram() {
+      if self
+        .mapper
+        .as_ref()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .has_extended_ram()
+      {
         self.ext_ram[(addr - 0x6000) as usize] = value;
       }
     } else {
@@ -157,7 +164,8 @@ impl MainBus {
         .mapper
         .as_ref()
         .unwrap()
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .write_prg(addr, value);
     }
   }
@@ -178,7 +186,7 @@ impl MainBus {
         JOY2 => self.control2.read(),
         _ => {
           for reg in &mut self.registers {
-            if let Some(value) = reg.borrow_mut().read(mapped_addr) {
+            if let Some(value) = reg.lock().unwrap().read(mapped_addr) {
               return value;
             }
           }
@@ -190,11 +198,18 @@ impl MainBus {
     if addr < 0x6000 {
       warn!("Expansion ROM read attempted. This currently unsupported");
     } else if addr < 0x8000 {
-      if self.mapper.as_ref().unwrap().borrow().has_extended_ram() {
+      if self
+        .mapper
+        .as_ref()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .has_extended_ram()
+      {
         return self.ext_ram[(addr - 0x6000) as usize];
       }
     } else {
-      return self.mapper.as_ref().unwrap().borrow().read_prg(addr);
+      return self.mapper.as_ref().unwrap().lock().unwrap().read_prg(addr);
     }
     0
   }

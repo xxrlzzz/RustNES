@@ -1,7 +1,6 @@
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use crate::common::*;
@@ -25,7 +24,7 @@ pub struct PictureBus {
   name_table3: usize,
   palette: Vec<Byte>,
   #[serde(skip)]
-  mapper: Option<Rc<RefCell<dyn Mapper>>>,
+  mapper: Option<Arc<Mutex<dyn Mapper + Send + Sync>>>,
 }
 
 impl PictureBus {
@@ -41,7 +40,7 @@ impl PictureBus {
     }
   }
 
-  pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
+  pub fn set_mapper(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
     self.mapper = Some(mapper);
     self.update_mirroring();
   }
@@ -61,7 +60,7 @@ impl PictureBus {
   pub fn read(&self, addr: Address) -> Byte {
     if addr < 0x2000 {
       // TODO(xxrl) avoid borrow for each time reading will save performance.
-      self.mapper.as_ref().unwrap().borrow().read_chr(addr)
+      self.mapper.as_ref().unwrap().lock().unwrap().read_chr(addr)
     } else if addr < 0x3EFF {
       self.ram[self.get_name_table(addr) + (addr & 0x3FF) as usize]
     } else if addr < 0x3FFF {
@@ -81,7 +80,8 @@ impl PictureBus {
         .mapper
         .as_ref()
         .unwrap()
-        .borrow_mut()
+        .lock()
+        .unwrap()
         .write_chr(addr, value);
     } else if addr < 0x3EFF {
       let idx = self.get_name_table(addr) + (addr & 0x3FF) as usize;
@@ -100,7 +100,8 @@ impl PictureBus {
       .mapper
       .as_ref()
       .unwrap()
-      .borrow()
+      .lock()
+      .unwrap()
       .get_name_table_mirroring()
     {
       name_table_mirroring::HORIZONTAL => {
@@ -142,7 +143,8 @@ impl PictureBus {
             .mapper
             .as_ref()
             .unwrap()
-            .borrow()
+            .lock()
+            .unwrap()
             .get_name_table_mirroring()
         );
       }

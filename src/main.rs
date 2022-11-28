@@ -18,6 +18,7 @@ struct Args {
   save_path: String,
 }
 
+// #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 fn main() {
   match logger::init() {
     Err(_) => return,
@@ -32,9 +33,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+  use std::time::Instant;
 
-  
   type MatrixType = std::collections::HashMap<&'static str, u128>;
   const CPU_FREQUENCY: u32 = 1788908;
 
@@ -45,10 +45,27 @@ mod tests {
     let start = Instant::now();
     for i in 0..CPU_FREQUENCY {
       matrix
-      .entry(category_list[i as usize %3])
-      .and_modify(|e| *e += 1)
-      .or_insert(0);  
+        .entry(category_list[i as usize % 3])
+        .and_modify(|e| *e += 1)
+        .or_insert(0);
     }
     println!("total cost :{:?}", Instant::now() - start);
+  }
+
+  #[test]
+  fn thread_test() {
+    // let mut handles = vec![];
+    for i in 0..10 {
+      std::thread::spawn(move || {
+        println!("thread {} start", i);
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        println!("thread {} end", i);
+      });
+      // handles.push(handle);
+    }
+    // for handle in handles {
+    //   handle.join().unwrap();
+    // }
+    std::thread::sleep(std::time::Duration::from_secs(2));
   }
 }

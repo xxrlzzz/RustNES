@@ -73,3 +73,6 @@ impl Mapper for NRom {
     NROM
   }
 }
+
+unsafe impl Send for NRom {}
+unsafe impl Sync for NRom {}

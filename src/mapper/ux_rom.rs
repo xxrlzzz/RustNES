@@ -78,3 +78,6 @@ impl Mapper for UxRom {
     CNROM
   }
 }
+
+unsafe impl Sync for UxRom {}
+unsafe impl Send for UxRom {}

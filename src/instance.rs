@@ -1,22 +1,23 @@
 use std::{
-  cell::RefCell,
   fs::OpenOptions,
   io::Write,
-  rc::Rc,
+  sync::{Arc, Condvar, Mutex},
   time::{Duration, Instant},
 };
 
+use image::{ImageBuffer, Rgba, RgbaImage};
 use log::{error, info};
 use serde_json::json;
+use std::sync::mpsc;
 
 use crate::{
   apu::Apu,
-  bus::{main_bus::MainBus, message_bus::MessageBus, picture_bus::PictureBus},
+  bus::{main_bus::MainBus, message_bus::Message},
   cartridge::Cartridge,
-  cpu::Cpu,
+  cpu::{Cpu, InterruptType},
   emulator::RuntimeConfig,
   mapper::factory,
-  ppu::Ppu,
+  ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub enum RunningStatus {
   Pause = 1,
   LostFocus = 2,
   PauseAndLostFocus = 3,
+  Exist = 4,
+  PPURun = 5,
 }
 
 impl From<u8> for RunningStatus {
@@ -65,70 +68,49 @@ impl RunningStatus {
   }
 }
 pub struct Instance {
-  pub(crate) apu: Rc<RefCell<Apu>>,
+  pub(crate) apu: Arc<Mutex<Apu>>,
   pub(crate) cpu: Cpu,
-  pub(crate) ppu: Rc<RefCell<Ppu>>,
+  pub(crate) ppu: Arc<Mutex<Ppu>>,
   pub(crate) stat: RunningStatus,
   pub(crate) cycle_timer: Instant,
   pub(crate) elapsed_time: Duration,
+  pub(crate) message_rx: mpsc::Receiver<Message>,
+  pub(crate) ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
+  pub(crate) rgba: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
 }
 
 impl Instance {
-  pub(crate) fn new(apu: Rc<RefCell<Apu>>, cpu: Cpu, ppu: Rc<RefCell<Ppu>>) -> Self {
+  pub(crate) fn new(
+    apu: Arc<Mutex<Apu>>,
+    cpu: Cpu,
+    ppu: Arc<Mutex<Ppu>>,
+    message_rx: mpsc::Receiver<Message>,
+    ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
+  ) -> Self {
     Self {
       apu,
       cpu,
       ppu,
+      message_rx,
       stat: RunningStatus::Running,
+      ppu_cond,
       cycle_timer: Instant::now(),
       elapsed_time: Duration::new(0, 0),
+      rgba: None,
     }
   }
 
-  fn init_rom(
-    cartridge: Cartridge,
-    runtime_config: &RuntimeConfig,
-    message_bus: Rc<RefCell<MessageBus>>,
-  ) -> Option<Self> {
-    let ppu = Rc::new(RefCell::new(Ppu::new(PictureBus::new(), message_bus)));
-    let apu = Rc::new(RefCell::new(Apu::new()));
-    let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
-    main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
-
-    let mut cpu = Cpu::new(main_bus);
-    let mapper = factory::create_mapper(cartridge);
-    cpu.main_bus_mut().set_mapper(mapper.clone());
-    cpu.reset();
-    ppu.borrow_mut().set_mapper_for_bus(mapper);
-    // ppu.borrow_mut().reset();
-
-    apu.borrow_mut().start();
-    Some(Self::new(apu, cpu, ppu))
-  }
-
-  pub(crate) fn init_rom_from_data(
-    rom_data: &[u8],
-    runtime_config: &RuntimeConfig,
-    message_bus: Rc<RefCell<MessageBus>>,
-  ) -> Option<Self> {
-    let mut cartridge = Cartridge::new();
-    if !cartridge.load_from_data(rom_data) {
-      return None;
+  pub(crate) fn consume_message(&mut self) {
+    while let Ok(message) = self.message_rx.try_recv() {
+      match message {
+        Message::CpuInterrupt => {
+          self.cpu.interrupt(InterruptType::NMI);
+        }
+        Message::PpuRender(frame) => {
+          self.rgba = Some(frame);
+        }
+      };
     }
-
-    Self::init_rom(cartridge, runtime_config, message_bus)
-  }
-
-  pub(crate) fn init_rom_from_path(
-    rom_path: &str,
-    runtime_config: &RuntimeConfig,
-    message_bus: Rc<RefCell<MessageBus>>,
-  ) -> Option<Self> {
-    let mut cartridge = Cartridge::new();
-    if !cartridge.load_from_file(rom_path) {
-      return None;
-    }
-    Self::init_rom(cartridge, runtime_config, message_bus)
   }
 
   pub(crate) fn toggle_pause(&mut self) {
@@ -144,12 +126,84 @@ impl Instance {
     self.stat.is_focusing() && !self.stat.is_pausing()
   }
 
+  pub(crate) fn take_rgba(&mut self) -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> {
+    self.rgba.take()
+  }
+
   pub(crate) fn update_timer(&mut self) {
     let now = Instant::now();
     self.elapsed_time += now - self.cycle_timer;
     self.cycle_timer = now;
   }
 
+  pub(crate) fn launch_ppu(
+    ppu: Arc<Mutex<Ppu>>,
+    cond: Arc<(Mutex<RunningStatus>, Condvar)>,
+  ) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || loop {
+      let (lock, cvar) = &*cond;
+      {
+        let mut started = lock.lock().unwrap();
+        while *started == RunningStatus::Pause {
+          started = cvar.wait(started).unwrap();
+        }
+        if *started == RunningStatus::Exist {
+          break;
+        }
+        *started = RunningStatus::PPURun;
+      }
+      let ppu = ppu.clone();
+      {
+        let mut ppu = ppu.lock().unwrap();
+
+        ppu.step();
+        ppu.step();
+        ppu.step();
+      }
+      {
+        let mut started = lock.lock().unwrap();
+        *started = RunningStatus::Running;
+        cvar.notify_one();
+      }
+    })
+  }
+
+  pub(crate) fn step(&mut self) {
+    // {
+    //   let (lock, cvar) = &*self.ppu_cond;
+    //   let mut started = lock.lock().unwrap();
+    //   *started = RunningStatus::Running;
+    //   cvar.notify_one();
+    // }
+
+    {
+      let mut ppu = self.ppu.lock().unwrap();
+      ppu.step();
+      ppu.step();
+      ppu.step();
+    }
+    self.consume_message();
+    self.cpu.step();
+    self.apu.lock().unwrap().step();
+    // {
+    //   let (lock, cvar) = &*self.ppu_cond;
+    //   let mut started = lock.lock().unwrap();
+    //   while *started != RunningStatus::Running {
+    //     started = cvar.wait(started).unwrap();
+    //   }
+    // }
+  }
+
+  pub fn stop(&mut self) {
+    let (lock, cvar) = &*self.ppu_cond;
+    let mut started = lock.lock().unwrap();
+    *started = RunningStatus::Exist;
+    cvar.notify_one();
+  }
+}
+
+/// Save and load
+impl Instance {
   pub(crate) fn do_save(&self, file: &String) {
     match self.save(file) {
       Ok(_) => info!("save success"),
@@ -166,25 +220,22 @@ impl Instance {
       }
     }
     let mut file = std::fs::File::create(path)?;
-
     let json = json!({
-      "apu": serde_json::to_string(&*self.apu).unwrap(),
+      "apu": serde_json::to_string(&*self.apu.lock().unwrap()).unwrap(),
       "cpu": serde_json::to_string(&self.cpu).unwrap(),
-      "ppu": serde_json::to_string(&*self.ppu).unwrap(),
+      "ppu": serde_json::to_string(&*self.ppu.lock().unwrap()).unwrap(),
       "main_bus" : self.cpu.main_bus().save(),
     });
     file.write_all(json.to_string().as_bytes())
   }
 
-  pub(crate) fn load(
-    runtime_config: &RuntimeConfig,
-    message_bus: Rc<RefCell<MessageBus>>,
-  ) -> Result<Self, std::io::Error> {
+  pub fn load(runtime_config: &RuntimeConfig) -> Result<Self, std::io::Error> {
     let file = OpenOptions::new()
       .read(true)
       .open(&runtime_config.save_path)?;
 
     let json_obj: serde_json::Value = serde_json::from_reader(file)?;
+    let (message_sx, message_rx) = mpsc::channel::<Message>();
     fn str_mapper(json_value: &serde_json::Value) -> &str {
       json_value.as_str().unwrap()
     }
@@ -199,7 +250,7 @@ impl Instance {
       .map(|apu_str| {
         let mut apu: Apu = serde_json::from_str(apu_str).unwrap();
         apu.start();
-        Rc::new(RefCell::new(apu))
+        Arc::new(Mutex::new(apu))
       })
       .unwrap();
     let ppu = json_obj
@@ -207,8 +258,10 @@ impl Instance {
       .map(str_mapper)
       .map(|ppu_str| {
         let mut ppu: Ppu = serde_json::from_str(ppu_str).unwrap();
-        ppu.set_message_bus(message_bus);
-        Rc::new(RefCell::new(ppu))
+        ppu.set_message_bus(message_sx);
+        ppu.image = RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32);
+
+        Arc::new(Mutex::new(ppu))
       })
       .unwrap();
     json_obj.get("main_bus").map(|main_bus| {
@@ -216,17 +269,51 @@ impl Instance {
       main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
       cpu.set_main_bus(main_bus);
     });
-    Ok(Instance::new(apu, cpu, ppu))
+
+    let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
+    Self::launch_ppu(ppu.clone(), pair.clone());
+
+    Ok(Self::new(apu, cpu, ppu, message_rx, pair))
   }
 
-  pub(crate) fn step(&mut self) {
-    {
-      let mut ppu = self.ppu.borrow_mut();
-      ppu.step();
-      ppu.step();
-      ppu.step();
+  fn init_rom(cartridge: Cartridge, runtime_config: &RuntimeConfig) -> Option<Self> {
+    let (message_sx, message_rx) = mpsc::channel::<Message>();
+    let ppu = Arc::new(Mutex::new(Ppu::new(message_sx)));
+    let apu = Arc::new(Mutex::new(Apu::new()));
+    let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
+    main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
+
+    let mut cpu = Cpu::new(main_bus);
+    let mapper = factory::create_mapper(cartridge);
+    cpu.main_bus_mut().set_mapper(mapper.clone());
+    cpu.reset();
+    ppu.lock().unwrap().set_mapper_for_bus(mapper);
+    // ppu.borrow_mut().reset();
+
+    apu.lock().unwrap().start();
+
+    let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
+    Self::launch_ppu(ppu.clone(), pair.clone());
+    Some(Self::new(apu, cpu, ppu, message_rx, pair))
+  }
+
+  pub(crate) fn init_rom_from_data(
+    rom_data: &[u8],
+    runtime_config: &RuntimeConfig,
+  ) -> Option<Self> {
+    let mut cartridge = Cartridge::new();
+    if !cartridge.load_from_data(rom_data) {
+      return None;
     }
-    self.cpu.step();
-    self.apu.borrow_mut().step();
+
+    Self::init_rom(cartridge, runtime_config)
+  }
+
+  pub(crate) fn init_rom_from_path(rom_path: &str, runtime_config: &RuntimeConfig) -> Option<Self> {
+    let mut cartridge = Cartridge::new();
+    if !cartridge.load_from_file(rom_path) {
+      return None;
+    }
+    Self::init_rom(cartridge, runtime_config)
   }
 }

@@ -62,7 +62,7 @@ pub struct Apu {
   filter_chain: SoundFilterChain,
 }
 
-pub const CPU_FREQUENCY: u32 = 1788908;
+pub const CPU_FREQUENCY: u32 = 1789773;
 
 const FRAME_COUNTER_RATE: f64 = CPU_FREQUENCY as f64 / 240.0;
 impl Apu {
