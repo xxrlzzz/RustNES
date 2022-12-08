@@ -11,14 +11,14 @@ mod opcodes;
 
 #[derive(PartialEq)]
 pub enum InterruptType {
-  IRQ,
+  _IRQ,
   NMI,
   BRK,
 }
 
 // 256 read + 256 write + 1 dummy read
 const DMA_CYCLES: u32 = 513;
-const DMC_CYCLES: u32 = 4;
+const _DMC_CYCLES: u32 = 4;
 const INTERRUPT_CYCLES: u32 = 7;
 
 mod flag_const {
@@ -161,7 +161,7 @@ impl Cpu {
     self.flag.set_at(flag_const::INTERRUPT, true);
 
     self.r_pc = self.read_address(match i_type {
-      InterruptType::IRQ => opcodes::IRQ_VECTOR,
+      InterruptType::_IRQ => opcodes::IRQ_VECTOR,
       InterruptType::BRK => opcodes::IRQ_VECTOR,
       InterruptType::NMI => opcodes::NMI_VECTOR,
     });
@@ -203,8 +203,8 @@ impl Cpu {
     self.skip_cycles += self.cycles & 1;
   }
 
-  pub fn skip_dmc_cycles(&mut self) {
-    self.skip_cycles += DMC_CYCLES;
+  pub fn _skip_dmc_cycles(&mut self) {
+    self.skip_cycles += _DMC_CYCLES;
   }
 
   fn read_address(&mut self, addr: Address) -> Address {

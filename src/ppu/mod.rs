@@ -11,7 +11,6 @@ use crate::bus::main_bus::{
 };
 use crate::bus::message_bus::Message;
 use crate::bus::picture_bus::PictureBus;
-use crate::common::serializer::*;
 use crate::common::*;
 use crate::mapper::Mapper;
 
@@ -29,7 +28,7 @@ enum CharacterPage {
   High,
 }
 
-pub const SCANLINE_END_CYCLE_LENGTH: u32 = 341;
+pub const _SCANLINE_END_CYCLE_LENGTH: u32 = 341;
 const SCANLINE_END_CYCLE: usize = 340;
 pub const VISIBLE_SCANLINES: usize = 240;
 pub const SCANLINE_VISIBLE_DOTS: usize = 256;
@@ -134,7 +133,7 @@ impl Ppu {
   }
 
   #[deprecated]
-  pub fn reset(&mut self) {
+  pub fn _reset(&mut self) {
     self.long_sprites = false;
     self.generate_interrupt = false;
     self.grey_scale_mode = false;
@@ -331,7 +330,7 @@ impl Ppu {
         let mut addr: Address;
 
         if !self.long_sprites {
-          addr = tile * 16 + y_offset as u16;
+          addr = ((tile as i32) * 16 + y_offset) as u16;
           if let CharacterPage::High = self.sprite_page {
             addr += 0x1000;
           }

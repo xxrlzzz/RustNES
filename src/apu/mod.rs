@@ -1,5 +1,5 @@
 // #[cfg(not(target_os = "android"))]
-#[cfg(target = "use_gl")]
+#[cfg(feature = "audio")]
 mod portaudio_player;
 mod sound_filter;
 mod sound_wave;
@@ -13,7 +13,7 @@ use crate::{
 };
 
 // #[cfg(not(target_os = "android"))]
-#[cfg(target = "use_gl")]
+#[cfg(feature = "audio")]
 use self::portaudio_player::PortAudioPlayer;
 
 use self::{
@@ -48,7 +48,7 @@ pub struct Apu {
   frame_irq: bool,
 
   // #[cfg(not(target_os = "android"))]
-  #[cfg(target = "use_gl")]
+  #[cfg(feature = "audio")]
   #[serde(skip)]
   player: PortAudioPlayer,
   sample_rate: f64,
@@ -69,15 +69,15 @@ impl Apu {
   pub fn new() -> Self {
     // #[cfg(not(target_os = "android"))]
 
-    #[cfg(target = "use_gl")]
+    #[cfg(feature = "audio")]
     let mut player = PortAudioPlayer::new();
 
     // #[cfg(not(target_os = "android"))]
 
-    #[cfg(target = "use_gl")]
+    #[cfg(feature = "audio")]
     let sample_rate = player.init().unwrap() as f32;
 
-    #[cfg(feature = "use_sdl2")]
+    #[cfg(not(feature = "audio"))]
     let sample_rate = 44100.0;
     Self {
       cycle: 0,
@@ -86,7 +86,7 @@ impl Apu {
       frame_irq: false,
 
       // #[cfg(not(target_os = "android"))]
-      #[cfg(target = "use_gl")]
+      #[cfg(feature = "audio")]
       player,
       sample_rate: CPU_FREQUENCY as f64 / sample_rate as f64,
       pulse1: Pulse::new(1),
@@ -101,9 +101,9 @@ impl Apu {
       ],
     }
   }
+
   pub fn start(&mut self) {
-    // #[cfg(not(target_os = "android"))]
-    #[cfg(target = "use_gl")]
+    #[cfg(feature = "audio")]
     match self.player.start() {
       Ok(_) => {}
       Err(e) => {
@@ -112,9 +112,7 @@ impl Apu {
     }
   }
   pub fn stop(&mut self) {
-    // #[cfg(not(target_os = "android"))]
-
-    #[cfg(target = "use_gl")]
+    #[cfg(feature = "audio")]
     match self.player.stop() {
       Ok(_) => {}
       Err(e) => {
@@ -148,13 +146,12 @@ impl Apu {
     let dmc = self.dmc.output();
     let sample = PULSE_TABLE[(pulse1 + pulse2) as usize]
       + TND_TABLE[(3 * triangle + 2 * noise + dmc) as usize];
-    let after_sample = self.filter_chain.step(sample);
+    let _after_sample = self.filter_chain.step(sample);
     if sample != 0. {
       // info!("sample: {:?} {:?}", after_sample, sample);
     }
 
-    // #[cfg(not(target_os = "android"))]
-    #[cfg(target = "use_gl")]
+    #[cfg(feature = "audio")]
     self.player.send_sample(after_sample);
   }
 

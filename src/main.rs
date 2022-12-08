@@ -28,6 +28,7 @@ fn main() {
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
   let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
   let instance = emulator.create_instance(&args.rom_path);
+  #[cfg(not(target_arch = "wasm32"))]
   emulator.run(instance);
 }
 

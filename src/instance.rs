@@ -199,6 +199,8 @@ impl Instance {
     let mut started = lock.lock().unwrap();
     *started = RunningStatus::Exist;
     cvar.notify_one();
+
+    self.apu.lock().unwrap().stop();
   }
 }
 

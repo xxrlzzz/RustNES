@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::common::bit_eq;
 use crate::common::Byte;
 
@@ -13,7 +11,7 @@ use self::key_binding_parser::KeyType;
 pub static mut WINDOW_INSTANCE: Option<std::rc::Rc<std::cell::RefCell<glfw::Window>>> = None;
 
 #[cfg(feature = "use_sdl2")]
-pub static mut KEYBOARD_STATE: Option<HashSet<sdl2::keyboard::Keycode>> = None;
+pub static mut KEYBOARD_STATE: Option<std::collections::HashSet<sdl2::keyboard::Keycode>> = None;
 
 #[derive(Default)]
 pub struct Controller {
@@ -27,7 +25,10 @@ impl Controller {
     Self {
       enable_strobe: false,
       key_states: 0,
+      #[cfg(not(feature = "wasm"))]
       key_bindings: vec![KeyType::A; TOTAL_BUTTONS],
+      #[cfg(feature = "wasm")]
+      key_bindings: vec![0; TOTAL_BUTTONS],
     }
   }
 
@@ -65,12 +66,16 @@ impl Controller {
       #[cfg(feature = "use_gl")]
       {
         let window_ref = unsafe { WINDOW_INSTANCE.as_ref().unwrap().borrow() };
-        return (window_ref.get_key(self.key_bindings[0]) == glfw::Action::Press) as u8 | 0x40;
+        (window_ref.get_key(self.key_bindings[0]) == glfw::Action::Press) as u8 | 0x40
       }
       #[cfg(feature = "use_sdl2")]
       {
         let keyboard_state = unsafe { KEYBOARD_STATE.as_ref().unwrap() };
         return keyboard_state.contains(&self.key_bindings[0]) as u8 | 0x40;
+      }
+      #[cfg(target_arch = "wasm32")]
+      {
+        return 0;
       }
     } else {
       let ret = self.key_states & 1;

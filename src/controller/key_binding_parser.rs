@@ -6,6 +6,9 @@ pub type KeyType = glfw::Key;
 #[cfg(feature = "use_sdl2")]
 pub type KeyType = sdl2::keyboard::Keycode;
 
+#[cfg(target_arch = "wasm32")]
+pub type KeyType = u32;
+
 pub const TOTAL_BUTTONS: usize = 8;
 const BUTTONS: &'static [&str] = &["a", "b", "select", "start", "up", "down", "left", "right"];
 const KEYBOARD_KEYS: &'static [&str] = &[
@@ -322,8 +325,14 @@ const KEYS: &'static [sdl2::keyboard::Keycode] = &[
   KeyType::Pause,
 ];
 
+#[cfg(target_arch = "wasm32")]
+const KEYS: &'static [u32] = &[];
+
 fn parse_one_player(keys: &HashMap<String, Option<String>>) -> Vec<KeyType> {
+  #[cfg(not(feature = "wasm"))]
   let mut res = vec![KeyType::A; TOTAL_BUTTONS + 1];
+  #[cfg(feature = "wasm")]
+  let mut res = vec![0; TOTAL_BUTTONS + 1];
   for (k, v) in keys {
     if let None = v {
       continue;

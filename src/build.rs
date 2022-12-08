@@ -3,6 +3,7 @@ use std::{env, path::PathBuf};
 fn main() {
   let library_name = "SDL2";
   let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+  // Link SDL2 for android.
   match env::var("TARGET") {
     Ok(target) => {
       let relative_path = if target.contains("armv7") {
@@ -11,6 +12,8 @@ fn main() {
         "native-libs/x86"
       } else if target.contains("aarch64") {
         "native-libs/aarch64"
+      } else if target.contains("wasm") {
+        return;
       } else {
         ""
       };
