@@ -1,6 +1,8 @@
 pub type Byte = u8;
 pub type Address = u16;
 
+pub mod instant;
+
 pub fn bit_eq<T: std::ops::BitAndAssign + PartialEq + Copy>(a: T, b: T) -> bool {
   let mut ca = a;
   ca &= b;

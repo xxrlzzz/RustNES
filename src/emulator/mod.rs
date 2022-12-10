@@ -6,11 +6,12 @@ mod sdl2;
 #[cfg(feature = "use_gl")]
 mod gl;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use log::info;
 
 use crate::apu::CPU_FREQUENCY;
+use crate::common::instant::Instant;
 use crate::controller::key_binding_parser::KeyType;
 use crate::instance::Instance;
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
@@ -90,5 +91,11 @@ impl Emulator {
   #[cfg(not(any(feature = "use_sdl2", feature = "use_gl")))]
   pub fn run(&mut self, mut _instance: Instance) {
     info!("start running");
+  }
+
+  #[cfg(feature = "wasm")]
+  pub fn frame(&mut self, instance: &mut Instance) -> Option<crate::instance::FrameBuffer> {
+    self.one_frame(instance);
+    instance.take_rgba()
   }
 }

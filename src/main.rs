@@ -18,7 +18,7 @@ struct Args {
   save_path: String,
 }
 
-// #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[cfg(any(feature = "use_gl", feature = "use_sdl2"))]
 fn main() {
   match logger::init() {
     Err(_) => return,
@@ -28,8 +28,12 @@ fn main() {
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
   let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
   let instance = emulator.create_instance(&args.rom_path);
-  #[cfg(not(target_arch = "wasm32"))]
   emulator.run(instance);
+}
+
+#[cfg(not(any(feature = "use_gl", feature = "use_sdl2")))]
+fn main() {
+  println!("Please use feature `use_gl` or `use_sdl2` to run this program.");
 }
 
 #[cfg(test)]

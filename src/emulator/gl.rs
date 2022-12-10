@@ -14,10 +14,7 @@ impl Emulator {
 
     use glfw::Context;
 
-    use crate::{
-      controller::WINDOW_INSTANCE,
-      render::{gl_helper, glfw_window},
-    };
+    use crate::render::{gl_helper, glfw_window};
 
     // let mut instance = self.create_instance(rom_path);
 
@@ -30,7 +27,7 @@ impl Emulator {
     let window = Rc::new(RefCell::new(window));
 
     unsafe {
-      WINDOW_INSTANCE = Some(window.clone());
+      crate::controller::gl_key::WINDOW_INSTANCE = Some(window.clone());
     }
 
     #[allow(non_snake_case)]

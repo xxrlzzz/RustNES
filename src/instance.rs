@@ -2,7 +2,7 @@ use std::{
   fs::OpenOptions,
   io::Write,
   sync::{Arc, Condvar, Mutex},
-  time::{Duration, Instant},
+  time::Duration,
 };
 
 use image::{ImageBuffer, Rgba, RgbaImage};
@@ -14,11 +14,14 @@ use crate::{
   apu::Apu,
   bus::{main_bus::MainBus, message_bus::Message},
   cartridge::Cartridge,
+  common::instant::Instant,
   cpu::{Cpu, InterruptType},
   emulator::RuntimeConfig,
   mapper::factory,
   ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES},
 };
+
+pub type FrameBuffer = ImageBuffer<Rgba<u8>, Vec<u8>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -76,7 +79,7 @@ pub struct Instance {
   pub(crate) elapsed_time: Duration,
   pub(crate) message_rx: mpsc::Receiver<Message>,
   pub(crate) ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
-  pub(crate) rgba: Option<ImageBuffer<Rgba<u8>, Vec<u8>>>,
+  pub(crate) rgba: Option<FrameBuffer>,
 }
 
 impl Instance {
@@ -126,7 +129,7 @@ impl Instance {
     self.stat.is_focusing() && !self.stat.is_pausing()
   }
 
-  pub(crate) fn take_rgba(&mut self) -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> {
+  pub(crate) fn take_rgba(&mut self) -> Option<FrameBuffer> {
     self.rgba.take()
   }
 
@@ -136,6 +139,8 @@ impl Instance {
     self.cycle_timer = now;
   }
 
+  // If running on multi-thread, render ppu on different thread.
+  // Disabled due to sync with performance issue.
   pub(crate) fn launch_ppu(
     ppu: Arc<Mutex<Ppu>>,
     cond: Arc<(Mutex<RunningStatus>, Condvar)>,
@@ -169,13 +174,6 @@ impl Instance {
   }
 
   pub(crate) fn step(&mut self) {
-    // {
-    //   let (lock, cvar) = &*self.ppu_cond;
-    //   let mut started = lock.lock().unwrap();
-    //   *started = RunningStatus::Running;
-    //   cvar.notify_one();
-    // }
-
     {
       let mut ppu = self.ppu.lock().unwrap();
       ppu.step();
@@ -185,13 +183,6 @@ impl Instance {
     self.consume_message();
     self.cpu.step();
     self.apu.lock().unwrap().step();
-    // {
-    //   let (lock, cvar) = &*self.ppu_cond;
-    //   let mut started = lock.lock().unwrap();
-    //   while *started != RunningStatus::Running {
-    //     started = cvar.wait(started).unwrap();
-    //   }
-    // }
   }
 
   pub fn stop(&mut self) {
@@ -238,28 +229,23 @@ impl Instance {
 
     let json_obj: serde_json::Value = serde_json::from_reader(file)?;
     let (message_sx, message_rx) = mpsc::channel::<Message>();
-    fn str_mapper(json_value: &serde_json::Value) -> &str {
-      json_value.as_str().unwrap()
-    }
+
     let mut cpu: Cpu = json_obj
       .get("cpu")
-      .map(str_mapper)
-      .map(|cpu_str| serde_json::from_str(cpu_str).unwrap())
+      .map(|cpu_str| serde_json::from_value(cpu_str.clone()).unwrap())
       .unwrap();
     let apu = json_obj
       .get("apu")
-      .map(str_mapper)
       .map(|apu_str| {
-        let mut apu: Apu = serde_json::from_str(apu_str).unwrap();
+        let mut apu: Apu = serde_json::from_value(apu_str.clone()).unwrap();
         apu.start();
         Arc::new(Mutex::new(apu))
       })
       .unwrap();
     let ppu = json_obj
       .get("ppu")
-      .map(str_mapper)
       .map(|ppu_str| {
-        let mut ppu: Ppu = serde_json::from_str(ppu_str).unwrap();
+        let mut ppu: Ppu = serde_json::from_value(ppu_str.clone()).unwrap();
         ppu.set_message_bus(message_sx);
         ppu.image = RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32);
 
@@ -273,6 +259,7 @@ impl Instance {
     });
 
     let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
+    #[cfg(not(feature = "wasm"))]
     Self::launch_ppu(ppu.clone(), pair.clone());
 
     Ok(Self::new(apu, cpu, ppu, message_rx, pair))
@@ -295,6 +282,7 @@ impl Instance {
     apu.lock().unwrap().start();
 
     let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
+    #[cfg(not(feature = "wasm"))]
     Self::launch_ppu(ppu.clone(), pair.clone());
     Some(Self::new(apu, cpu, ppu, message_rx, pair))
   }

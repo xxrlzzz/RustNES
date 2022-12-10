@@ -54,7 +54,7 @@ impl Emulator {
         .flat_map(sdl2::keyboard::Keycode::from_scancode)
         .collect();
       unsafe {
-        crate::controller::KEYBOARD_STATE = Some(keycodes);
+        crate::controller::sdl2_key::KEYBOARD_STATE = Some(keycodes);
       }
 
       // The rest of the game loop goes here...

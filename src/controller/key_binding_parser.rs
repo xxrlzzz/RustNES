@@ -6,8 +6,14 @@ pub type KeyType = glfw::Key;
 #[cfg(feature = "use_sdl2")]
 pub type KeyType = sdl2::keyboard::Keycode;
 
-#[cfg(target_arch = "wasm32")]
-pub type KeyType = u32;
+#[cfg(feature = "wasm")]
+pub type KeyType = usize;
+
+#[cfg(feature = "wasm")]
+pub const DEFAULT_KEY: KeyType = key_codes::A;
+
+#[cfg(not(feature = "wasm"))]
+pub const DEFAULT_KEY: KeyType = KeyType::A;
 
 pub const TOTAL_BUTTONS: usize = 8;
 const BUTTONS: &'static [&str] = &["a", "b", "select", "start", "up", "down", "left", "right"];
@@ -221,7 +227,7 @@ const KEYS: &'static [KeyType] = &[
 ];
 
 #[cfg(feature = "use_sdl2")]
-const KEYS: &'static [sdl2::keyboard::Keycode] = &[
+const KEYS: &'static [KeyType] = &[
   KeyType::A,
   KeyType::B,
   KeyType::C,
@@ -325,8 +331,113 @@ const KEYS: &'static [sdl2::keyboard::Keycode] = &[
   KeyType::Pause,
 ];
 
-#[cfg(target_arch = "wasm32")]
-const KEYS: &'static [u32] = &[];
+#[cfg(feature = "wasm")]
+use wasm_rgame::key_codes;
+
+#[cfg(feature = "wasm")]
+const KEYS: &'static [KeyType] = &[
+  key_codes::A,
+  key_codes::B,
+  key_codes::C,
+  key_codes::D,
+  key_codes::E,
+  key_codes::F,
+  key_codes::G,
+  key_codes::H,
+  key_codes::I,
+  key_codes::J,
+  key_codes::K,
+  key_codes::L,
+  key_codes::M,
+  key_codes::N,
+  key_codes::O,
+  key_codes::P,
+  key_codes::Q,
+  key_codes::R,
+  key_codes::S,
+  key_codes::T,
+  key_codes::U,
+  key_codes::V,
+  key_codes::W,
+  key_codes::X,
+  key_codes::Y,
+  key_codes::Z,
+  key_codes::ALPHA_0,
+  key_codes::ALPHA_1,
+  key_codes::ALPHA_2,
+  key_codes::ALPHA_3,
+  key_codes::ALPHA_4,
+  key_codes::ALPHA_5,
+  key_codes::ALPHA_6,
+  key_codes::ALPHA_7,
+  key_codes::ALPHA_8,
+  key_codes::ALPHA_9,
+  key_codes::ESCAPE,
+  key_codes::CTRL,
+  key_codes::SHIFT,
+  key_codes::ALT,
+  0, //LSystem
+  key_codes::CTRL,
+  key_codes::SHIFT,
+  key_codes::ALT,
+  0, //RSystem
+  0, //Menu
+  key_codes::OPEN_BRACKET,
+  key_codes::CLOSE_BRAKET,
+  key_codes::SEMI_COLON,
+  key_codes::COMMA,
+  key_codes::PERIOD,
+  0xAA, // Quote
+  key_codes::FORWARD_SLASH,
+  key_codes::BACK_SLASH,
+  0, // Tilde
+  key_codes::EQUAL_SIGN,
+  0,    // Dash
+  0x20, // Space
+  key_codes::ENTER,
+  key_codes::BACKSPACE,
+  key_codes::TAB,
+  key_codes::PAGE_UP,
+  key_codes::PAGE_DOWN,
+  key_codes::END,
+  key_codes::HOME,
+  key_codes::INSERT,
+  key_codes::DELETE,
+  key_codes::ADD,
+  key_codes::SUBTRACT,
+  key_codes::MULTIPLY,
+  key_codes::DIVIDE,
+  key_codes::LEFT_ARROW,
+  key_codes::RIGHT_ARROW,
+  key_codes::UP_ARROW,
+  key_codes::DOWN_ARROW,
+  key_codes::ALPHA_0,
+  key_codes::ALPHA_1,
+  key_codes::ALPHA_2,
+  key_codes::ALPHA_3,
+  key_codes::ALPHA_4,
+  key_codes::ALPHA_5,
+  key_codes::ALPHA_6,
+  key_codes::ALPHA_7,
+  key_codes::ALPHA_8,
+  key_codes::ALPHA_9,
+  key_codes::F1,
+  key_codes::F2,
+  key_codes::F3,
+  key_codes::F4,
+  key_codes::F5,
+  key_codes::F6,
+  key_codes::F7,
+  key_codes::F8,
+  key_codes::F9,
+  key_codes::F10,
+  key_codes::F11,
+  key_codes::F12,
+  0, //F13
+  0, //F14
+  0, //F15
+  0, //Pause
+];
 
 fn parse_one_player(keys: &HashMap<String, Option<String>>) -> Vec<KeyType> {
   #[cfg(not(feature = "wasm"))]

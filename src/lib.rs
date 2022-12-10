@@ -19,3 +19,6 @@ extern crate serde;
 
 #[cfg(target_os = "android")]
 pub mod android;
+
+#[cfg(feature = "wasm")]
+pub mod web;

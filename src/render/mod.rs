@@ -1,7 +1,9 @@
 #[cfg(feature = "use_gl")]
-pub mod gl_helper;
+pub mod gl;
 #[cfg(feature = "use_gl")]
 pub mod glfw_window;
 
-#[cfg(target_arch = "wasm32")]
-pub mod webgl_helper;
+#[cfg(feature = "wasm")]
+pub mod webgl;
+
+pub(crate) mod shader;

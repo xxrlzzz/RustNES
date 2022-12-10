@@ -5,54 +5,9 @@ use std::{
 
 use gl::types::*;
 
+use super::shader::{FRAGMENT_SHADER_SOURCE, INDICES, VERTEX_SHADER_SOURCE, VERTICES};
+
 const BUF_SIZE: usize = 512;
-
-#[rustfmt::skip]
-pub(crate) const VERTICES: [f32; 20] =
-[
-   1.0,  1.0, 1.0, 0.0, 0.0,
-   1.0, -1.0, 1.0, 1.0, 0.0,
-  -1.0, -1.0, 0.0, 1.0, 0.0,
-  -1.0,  1.0, 0.0, 0.0, 0.0,
-  // 0.5,  0.5, 1.0, 0.0, 0.0,
-  // 0.5, -0.5, 1.0, 1.0, 0.0,
-  // -0.5, -0.5, 0.0, 1.0, 0.0,
-  // -0.5,  0.5, 0.0, 0.0, 0.0,
-];
-pub(crate) const INDICES: [i32; 6] = [0, 1, 3, 1, 2, 3];
-
-pub(crate) const VERTEX_SHADER_SOURCE: &str = r#"
-#version 330 core
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec2 texCoord;
-layout(location = 2) in float layer;
-out vec2 uv;
-out float layer_get;
-void main()
-{
-    gl_Position = vec4(position.x, position.y, 0.0, 1.0);
-    uv = texCoord;
-    layer_get = layer;
-}
-"#;
-
-pub(crate) const FRAGMENT_SHADER_SOURCE: &str = r#"
-#version 330 core
-out vec4 color;
-
-in vec2 uv;
-in float layer_get;
-
-//layout (binding=0) uniform sampler2DArray textureArray;
-// uniform sampler2DArray textureArray;
-uniform sampler2D texture1;
-
-void main()
-{
-    // color = texture(textureArray, vec3(uv.x,uv.y, layer_get));
-    color = texture(texture1, uv);
-}
-"#;
 
 pub(crate) unsafe fn compile_shader() -> u32 {
   let mut success = gl::FALSE as GLint;
@@ -156,16 +111,6 @@ pub(crate) unsafe fn create_vao() -> u32 {
   );
   gl::EnableVertexAttribArray(1);
 
-  gl::VertexAttribPointer(
-    2,
-    1,
-    gl::FLOAT,
-    gl::FALSE,
-    stripe,
-    (4 * mem::size_of::<GLfloat>()) as *const c_void,
-  );
-  gl::EnableVertexAttribArray(2);
-
   gl::BindBuffer(gl::ARRAY_BUFFER, 0);
   gl::BindVertexArray(0);
   VAO
@@ -175,8 +120,8 @@ pub(crate) unsafe fn create_texture(shader: u32) -> u32 {
   let mut texture: u32 = 1;
   gl::GenTextures(1, &mut texture);
   gl::BindTexture(gl::TEXTURE_2D, texture);
-  gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
-  gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
+  gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+  gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
   gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
   gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
 
@@ -204,7 +149,6 @@ pub(crate) unsafe fn set_texture(buf: image::RgbaImage) {
   )
 }
 
-#[allow(non_snake_case)]
 pub(crate) unsafe fn draw_frame(shader: u32, VAO: u32, texture: u32) {
   gl::Clear(gl::COLOR_BUFFER_BIT);
 
