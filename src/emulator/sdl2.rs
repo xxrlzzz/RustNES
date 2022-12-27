@@ -9,28 +9,62 @@ use super::{Emulator, RuntimeConfig};
 use image::{ImageBuffer, Rgba};
 use log::{error, info};
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::{BlendMode, Texture};
+use sdl2::render::{BlendMode, Canvas, Texture};
 use sdl2::surface::Surface;
+use sdl2::video::Window;
+use sdl2::Sdl;
 
 impl Emulator {
-  pub fn run(&mut self, mut instance: Instance) {
-    let (width, height) = self.runtime_config.window_size();
-    let runtime_config = self.runtime_config.clone();
+  fn update_keys(&self, event_pump: &sdl2::EventPump) {
+    let keyboard_status = event_pump.keyboard_state();
+    let keycodes: HashSet<sdl2::keyboard::Keycode> = keyboard_status
+      .pressed_scancodes()
+      .flat_map(sdl2::keyboard::Keycode::from_scancode)
+      .collect();
+    unsafe {
+      crate::controller::sdl2_key::KEYBOARD_STATE = Some(keycodes);
+    }
+  }
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+  fn update_display(
+    &self,
+    instance: &mut Instance,
+    texture: &mut Texture,
+    canvas: &mut Canvas<Window>,
+  ) {
+    let mut rgba = instance.take_rgba();
+    if rgba.is_some() {
+      set_sdl2_texture(texture, rgba.take().unwrap());
+
+      let _ = canvas.copy(&texture, None, None);
+      canvas.present();
+    }
+  }
+
+  fn create_window(&self) -> Result<(Sdl, Canvas<Window>), String> {
+    let (width, height) = self.runtime_config.window_size();
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
 
     let window = video_subsystem
       .window(APP_NAME, width, height)
       .position_centered()
       .allow_highdpi()
       .build()
-      .unwrap();
+      .map_err(|e| e.to_string())?;
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
     canvas.set_blend_mode(BlendMode::None);
     canvas.set_draw_color(sdl2::pixels::Color::RGB(0, 0, 0));
     canvas.clear();
+
+    Ok((sdl_context, canvas))
+  }
+
+  pub fn run(&mut self, mut instance: Instance) {
+    let runtime_config = self.runtime_config.clone();
+
+    let (sdl_context, mut canvas) = self.create_window().unwrap();
 
     let texture_creator = canvas.texture_creator();
 
@@ -48,24 +82,8 @@ impl Emulator {
           break 'running;
         }
       }
-      let keyboard_status = event_pump.keyboard_state();
-      let keycodes: HashSet<sdl2::keyboard::Keycode> = keyboard_status
-        .pressed_scancodes()
-        .flat_map(sdl2::keyboard::Keycode::from_scancode)
-        .collect();
-      unsafe {
-        crate::controller::sdl2_key::KEYBOARD_STATE = Some(keycodes);
-      }
-
-      // The rest of the game loop goes here...
-      let mut rgba = instance.take_rgba();
-      if rgba.is_some() {
-        set_sdl2_texture(&mut texture, rgba.take().unwrap());
-
-        // info!("update game screen");
-        let _ = canvas.copy(&texture, None, None);
-        canvas.present();
-      }
+      self.update_keys(&event_pump);
+      self.update_display(&mut instance, &mut texture, &mut canvas);
 
       if instance.can_run() {
         let cost = self.one_frame(&mut instance);

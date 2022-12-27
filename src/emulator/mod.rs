@@ -6,9 +6,12 @@ mod sdl2;
 #[cfg(feature = "use_gl")]
 mod gl;
 
+#[cfg(feature = "wasm")]
+mod web;
+
 use std::time::Duration;
 
-use log::info;
+use log::{debug, info};
 
 use crate::apu::CPU_FREQUENCY;
 use crate::common::instant::Instant;
@@ -16,8 +19,8 @@ use crate::controller::key_binding_parser::KeyType;
 use crate::instance::Instance;
 use crate::ppu::{SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES};
 
-const NES_VIDEO_WIDTH: u32 = SCANLINE_VISIBLE_DOTS as u32;
-const NES_VIDEO_HEIGHT: u32 = VISIBLE_SCANLINES as u32;
+const NES_VIDEO_WIDTH: u32 = (SCANLINE_VISIBLE_DOTS) as u32;
+const NES_VIDEO_HEIGHT: u32 = (VISIBLE_SCANLINES) as u32;
 const CPU_CYCLE_DURATION: Duration = Duration::from_nanos(559);
 
 pub const APP_NAME: &str = "NES-Simulator";
@@ -75,8 +78,7 @@ impl Emulator {
       instance.elapsed_time -= CPU_CYCLE_DURATION;
     }
     let cost = Instant::now() - instance.cycle_timer;
-    info!("last frame toke {:?} for {} times.", cost, iter_time);
-
+    debug!("last frame toke {:?} for {} times.", cost, iter_time);
     cost
   }
 
@@ -91,11 +93,5 @@ impl Emulator {
   #[cfg(not(any(feature = "use_sdl2", feature = "use_gl")))]
   pub fn run(&mut self, mut _instance: Instance) {
     info!("start running");
-  }
-
-  #[cfg(feature = "wasm")]
-  pub fn frame(&mut self, instance: &mut Instance) -> Option<crate::instance::FrameBuffer> {
-    self.one_frame(instance);
-    instance.take_rgba()
   }
 }

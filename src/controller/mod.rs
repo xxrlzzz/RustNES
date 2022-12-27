@@ -17,6 +17,7 @@ pub struct Controller {
   enable_strobe: bool,
   key_states: u8,
   key_bindings: Vec<KeyType>,
+  enable_remote: bool,
 }
 
 impl Controller {
@@ -28,6 +29,19 @@ impl Controller {
       key_bindings: vec![KeyType::A; TOTAL_BUTTONS],
       #[cfg(feature = "wasm")]
       key_bindings: vec![0; TOTAL_BUTTONS],
+      enable_remote: false,
+    }
+  }
+
+  pub fn remote_controller() -> Self {
+    Self {
+      enable_strobe: false,
+      key_states: 0,
+      #[cfg(not(feature = "wasm"))]
+      key_bindings: vec![KeyType::A; TOTAL_BUTTONS],
+      #[cfg(feature = "wasm")]
+      key_bindings: vec![0; TOTAL_BUTTONS],
+      enable_remote: true,
     }
   }
 

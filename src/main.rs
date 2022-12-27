@@ -1,5 +1,6 @@
 use clap::Parser;
 
+#[cfg(any(feature = "use_gl", feature = "use_sdl2"))]
 use rust_nes::{controller, emulator, logger};
 
 #[derive(Parser, Debug)]
@@ -55,22 +56,5 @@ mod tests {
         .or_insert(0);
     }
     println!("total cost :{:?}", Instant::now() - start);
-  }
-
-  #[test]
-  fn thread_test() {
-    // let mut handles = vec![];
-    for i in 0..10 {
-      std::thread::spawn(move || {
-        println!("thread {} start", i);
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        println!("thread {} end", i);
-      });
-      // handles.push(handle);
-    }
-    // for handle in handles {
-    //   handle.join().unwrap();
-    // }
-    std::thread::sleep(std::time::Duration::from_secs(2));
   }
 }

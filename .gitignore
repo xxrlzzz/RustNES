@@ -5,3 +5,6 @@
 Cargo.lock
 
 native-libs/
+
+save/
+assets/*.nes

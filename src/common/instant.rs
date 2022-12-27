@@ -2,6 +2,7 @@
 #![allow(dead_code, unused_imports)]
 use std::convert::TryInto;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 pub use std::time::*;
@@ -38,6 +39,11 @@ extern "C" {
   fn performance_now() -> f64;
 }
 
+// #[cfg(target_arch = "wasm32")]
+// fn date_now() -> f64 {
+//   js_sys::Date::now()
+// }
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Instant(u64);
@@ -46,6 +52,7 @@ pub struct Instant(u64);
 impl Instant {
   pub fn now() -> Self {
     Self((performance_now() * 1000.0) as u64)
+    // Self(date_now() as u64)
   }
   pub fn duration_since(&self, earlier: Instant) -> Duration {
     Duration::from_micros(self.0 - earlier.0)

@@ -59,7 +59,7 @@ impl MainBus {
       mapper: None,
       registers: vec![ppu, apu],
       control1: Controller::new(),
-      control2: Controller::new(),
+      control2: Controller::remote_controller(),
 
       skip_dma_cycles: false,
     }
@@ -79,7 +79,19 @@ impl MainBus {
   pub fn load(json: &serde_json::Value, ppu: Arc<Mutex<Ppu>>, apu: Arc<Mutex<Apu>>) -> Self {
     let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
     let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
-    let mapper = load_mapper(mapper_type as Byte, mapper_content);
+    let ppu_clone = ppu.clone();
+    let mapper = load_mapper(
+      mapper_type as Byte,
+      mapper_content,
+      Box::new(move |val: Byte| {
+        let r = ppu_clone.try_lock();
+        if r.is_err() {
+          warn!("ppu is locked");
+          return;
+        }
+        r.unwrap().update_mirroring(Some(val));
+      }),
+    );
     ppu.lock().unwrap().set_mapper_for_bus(mapper.clone());
     Self {
       ram: serde_json::from_str(json.get("ram").unwrap().as_str().unwrap()).unwrap(),

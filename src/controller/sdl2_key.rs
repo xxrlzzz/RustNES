@@ -13,7 +13,7 @@ impl Controller {
     }
   }
 
-  pub(crate) fn read_key(&self, btn: &KeyType) -> bool {
+  pub(crate) fn read_key(&self, _btn: &KeyType) -> bool {
     let keyboard_state = unsafe { KEYBOARD_STATE.as_ref().unwrap() };
     keyboard_state.contains(&self.key_bindings[0])
   }

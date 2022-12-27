@@ -569,6 +569,10 @@ impl Ppu {
       self.sprite_memory[i] = *page.add(i + SCANLINE_VISIBLE_DOTS - self.sprite_data_address);
     }
   }
+
+  pub fn update_mirroring(&mut self, val: Option<u8>) {
+    self.bus.update_mirroring(val);
+  }
 }
 
 impl RegisterHandler for Ppu {

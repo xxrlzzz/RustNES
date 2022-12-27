@@ -42,7 +42,7 @@ impl PictureBus {
 
   pub fn set_mapper(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
     self.mapper = Some(mapper);
-    self.update_mirroring();
+    self.update_mirroring(None);
   }
 
   fn get_name_table(&self, addr: Address) -> usize {
@@ -95,15 +95,18 @@ impl PictureBus {
     }
   }
 
-  pub fn update_mirroring(&mut self) {
-    match self
-      .mapper
-      .as_ref()
-      .unwrap()
-      .lock()
-      .unwrap()
-      .get_name_table_mirroring()
-    {
+  pub fn update_mirroring(&mut self, mirror: Option<u8>) {
+    let mirror = match mirror {
+      Some(m) => m,
+      None => self
+        .mapper
+        .as_ref()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .get_name_table_mirroring(),
+    };
+    match mirror {
       name_table_mirroring::HORIZONTAL => {
         self.name_table0 = 0;
         self.name_table1 = 0;
@@ -137,16 +140,7 @@ impl PictureBus {
         self.name_table1 = 0;
         self.name_table2 = 0;
         self.name_table3 = 0;
-        info!(
-          "Unsupported name table mirroring was set {}",
-          self
-            .mapper
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .get_name_table_mirroring()
-        );
+        info!("Unsupported name table mirroring was set {}", mirror);
       }
     }
   }

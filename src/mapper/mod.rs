@@ -2,6 +2,7 @@ pub mod cn_rom;
 pub mod factory;
 pub mod n_rom;
 pub mod ux_rom;
+pub mod sx_rom;
 
 use serde::Serialize;
 

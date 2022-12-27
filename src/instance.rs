@@ -6,7 +6,7 @@ use std::{
 };
 
 use image::{ImageBuffer, Rgba, RgbaImage};
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::json;
 use std::sync::mpsc;
 
@@ -141,6 +141,7 @@ impl Instance {
 
   // If running on multi-thread, render ppu on different thread.
   // Disabled due to sync with performance issue.
+  #[allow(dead_code)]
   pub(crate) fn launch_ppu(
     ppu: Arc<Mutex<Ppu>>,
     cond: Arc<(Mutex<RunningStatus>, Condvar)>,
@@ -273,7 +274,18 @@ impl Instance {
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
 
     let mut cpu = Cpu::new(main_bus);
-    let mapper = factory::create_mapper(cartridge);
+    let ppu_clone = ppu.clone();
+    let mapper = factory::create_mapper(
+      cartridge,
+      Box::new(move |val: u8| {
+        let r = ppu_clone.try_lock();
+        if r.is_ok() {
+          r.unwrap().update_mirroring(Some(val));
+        } else {
+          warn!("ppu is locked");
+        }
+      }),
+    );
     cpu.main_bus_mut().set_mapper(mapper.clone());
     cpu.reset();
     ppu.lock().unwrap().set_mapper_for_bus(mapper);

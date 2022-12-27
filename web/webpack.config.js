@@ -4,14 +4,24 @@ const webpack = require("webpack");
 const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 
 module.exports = {
-  entry: "./index.js",
+  entry: {
+    index: "./index.js",
+    client: "./client.js",
+  },
   output: {
     path: path.resolve(__dirname, "dist"),
-    filename: "index.js",
+    filename: "[name]-[hash].js",
   },
   plugins: [
     new HtmlWebpackPlugin({
       template: "index.html",
+      filename: "index.html",
+      chunks: ["index"],
+    }),
+    new HtmlWebpackPlugin({
+      template: "client.html",
+      filename: "client.html",
+      chunks: ["client"],
     }),
     new WasmPackPlugin({
       crateDirectory: path.resolve(__dirname, ".."),
@@ -28,5 +38,13 @@ module.exports = {
   mode: "development",
   experiments: {
     asyncWebAssembly: true,
+  },
+  module: {
+    rules: [
+      {
+        test: /\.nes$/,
+        type: "asset/resource",
+      },
+    ],
   },
 };
