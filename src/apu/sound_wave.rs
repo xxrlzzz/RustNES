@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::common::*;
 
 const LENGTH_TABLE: [Byte; 32] = [
-  0x0A, 0xFE, 0x14, 0x02, 0x28, 0x04, 0x80, 0x06, 0xA0, 0x8, 0x3C, 0x0A, 0x0E, 0x0C, 0x1A, 0x0E,
+  0x0A, 0xFE, 0x14, 0x02, 0x28, 0x04, 0x80, 0x06, 0xA0, 0x08, 0x3C, 0x0A, 0x0E, 0x0C, 0x1A, 0x0E,
   0x0C, 0x10, 0x18, 0x12, 0x30, 0x14, 0x60, 0x16, 0xC0, 0x18, 0x48, 0x1A, 0x10, 0x1C, 0x20, 0x1E,
 ];
 
@@ -14,9 +14,10 @@ const DUTY_TABLE: [[Byte; 8]; 4] = [
   [1, 0, 0, 1, 1, 1, 1, 1],
 ];
 
+#[rustfmt::skip]
 const TRIANGLE_TABLE: [Byte; 32] = [
-  15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-  13, 14, 15,
+  15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
 ];
 
 const NOISE_TABLE: [Address; 16] = [
@@ -254,7 +255,7 @@ pub(crate) struct Noise {
 impl Noise {
   pub(crate) fn new() -> Self {
     Self {
-      timer_period: 4,
+      timer_period: 0,
       timer_value: 0,
       shift_register: 1,
       timer_mode: false,
@@ -286,7 +287,7 @@ impl Noise {
   }
 
   pub(crate) fn output(&self) -> Byte {
-    if !bit_eq(self.shift_register, 1) {
+    if bit_eq(self.shift_register, 1) {
       return 0;
     }
     return self.envelope.output();
@@ -349,6 +350,9 @@ impl Triangle {
 
   pub(crate) fn output(&self) -> Byte {
     if !self.enabled {
+      return 0;
+    }
+    if self.timer_period < 3 {
       return 0;
     }
     if self.length_value == 0 {

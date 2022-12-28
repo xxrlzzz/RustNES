@@ -1,7 +1,9 @@
+use ciborium::de::from_reader;
+use ciborium::ser::into_writer;
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
-use serde_bytes::Bytes;
-use serde_json::{json, Value};
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
 use std::sync::{Arc, Mutex};
 
 use crate::apu::Apu;
@@ -65,24 +67,32 @@ impl MainBus {
     }
   }
 
-  pub fn save(&self) -> Value {
+  pub fn save_binary<'a>(&'a self, mut writer: BufWriter<&'a mut File>) -> BufWriter<&mut File> {
+    into_writer(&self.ram, &mut writer).unwrap();
+    into_writer(&self.ext_ram, &mut writer).unwrap();
+    into_writer(&self.skip_dma_cycles, &mut writer).unwrap();
     let mapper = self.mapper.as_ref().unwrap().lock().unwrap();
-    json!({
-      "ram": serde_json::to_string(Bytes::new(&self.ram)).unwrap(),
-      "ext_ram":serde_json::to_string(Bytes::new(&self.ext_ram)).unwrap(),
-      "mapper" : mapper.save(),
-      "skip_dma_cycles": self.skip_dma_cycles,
-      "mapper_type": mapper.mapper_type(),
-    })
+
+    into_writer(&mapper.mapper_type(), &mut writer).unwrap();
+    into_writer(&mapper.save(), &mut writer).unwrap();
+    writer
   }
 
-  pub fn load(json: &serde_json::Value, ppu: Arc<Mutex<Ppu>>, apu: Arc<Mutex<Apu>>) -> Self {
-    let mapper_type = json.get("mapper_type").unwrap().as_u64().unwrap();
-    let mapper_content = json.get("mapper").unwrap().as_str().unwrap();
+  pub fn load_binary(
+    mut reader: BufReader<File>,
+    ppu: Arc<Mutex<Ppu>>,
+    apu: Arc<Mutex<Apu>>,
+  ) -> Self {
+    let ram: Vec<Byte> = from_reader(&mut reader).unwrap();
+    let ext_ram: Vec<Byte> = from_reader(&mut reader).unwrap();
+    let skip_dma_cycles: bool = from_reader(&mut reader).unwrap();
+
+    let mapper_type: u8 = from_reader(&mut reader).unwrap();
+    let mapper_content: String = from_reader(&mut reader).unwrap();
     let ppu_clone = ppu.clone();
     let mapper = load_mapper(
       mapper_type as Byte,
-      mapper_content,
+      mapper_content.as_str(),
       Box::new(move |val: Byte| {
         let r = ppu_clone.try_lock();
         if r.is_err() {
@@ -94,13 +104,13 @@ impl MainBus {
     );
     ppu.lock().unwrap().set_mapper_for_bus(mapper.clone());
     Self {
-      ram: serde_json::from_str(json.get("ram").unwrap().as_str().unwrap()).unwrap(),
-      ext_ram: serde_json::from_str(json.get("ext_ram").unwrap().as_str().unwrap()).unwrap(),
+      ram,
+      ext_ram,
       mapper: Some(mapper),
       registers: vec![ppu, apu],
       control1: Controller::new(),
       control2: Controller::new(),
-      skip_dma_cycles: json.get("skip_dma_cycles").unwrap().as_bool().unwrap(),
+      skip_dma_cycles,
     }
   }
 

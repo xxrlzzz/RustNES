@@ -9,9 +9,9 @@ use serde::Serialize;
 
 mod opcodes;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum InterruptType {
-  _IRQ,
+  IRQ,
   NMI,
   BRK,
 }
@@ -161,7 +161,7 @@ impl Cpu {
     self.flag.set_at(flag_const::INTERRUPT, true);
 
     self.r_pc = self.read_address(match i_type {
-      InterruptType::_IRQ => opcodes::IRQ_VECTOR,
+      InterruptType::IRQ => opcodes::IRQ_VECTOR,
       InterruptType::BRK => opcodes::IRQ_VECTOR,
       InterruptType::NMI => opcodes::NMI_VECTOR,
     });
@@ -227,7 +227,6 @@ impl Cpu {
     if self.skip_cycles > 0 {
       return;
     }
-    // self.skip_cycles = 0;
     // let psw = self.get_flag();
     // debug!(
     //   "[CPU-STATUS] {:#x}:{:#x} A:{:#x}, X:{:#x}, Y:{:#x}, P:{:#x}, SP:{:#x}, CYC:{}",

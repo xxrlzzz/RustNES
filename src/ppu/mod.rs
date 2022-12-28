@@ -12,6 +12,7 @@ use crate::bus::main_bus::{
 use crate::bus::message_bus::Message;
 use crate::bus::picture_bus::PictureBus;
 use crate::common::*;
+use crate::cpu::InterruptType;
 use crate::mapper::Mapper;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -77,9 +78,9 @@ pub struct Ppu {
   data_address_increment: Address,
   #[serde(skip)]
   // #[serde(serialize_with = "rgba_ser", deserialize_with = "rgba_deser")]
-  pub(crate) image: RgbaImage,
+  pub(crate) image: RgbaImage, // not save image for now
   #[serde(skip)]
-  message_sx: Option<mpsc::Sender<Message>>,
+  message_sx: Option<mpsc::Sender<Message>>, // interrupt channel
 }
 
 impl Ppu {
@@ -431,7 +432,7 @@ impl Ppu {
           .message_sx
           .as_ref()
           .unwrap()
-          .send(Message::CpuInterrupt)
+          .send(Message::CpuInterrupt(InterruptType::NMI))
         {
           log::error!("send error: #{:?}", e);
           return;

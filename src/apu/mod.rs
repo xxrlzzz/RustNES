@@ -4,11 +4,20 @@ mod portaudio_player;
 mod sound_filter;
 mod sound_wave;
 
+use std::{
+  fs::File,
+  io::{BufWriter, Write},
+  sync::mpsc,
+};
+
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-  bus::main_bus::{IORegister, RegisterHandler, APU_ADDR, JOY2},
+  bus::{
+    main_bus::{IORegister, RegisterHandler, APU_ADDR, JOY2},
+    message_bus::Message,
+  },
   common::*,
 };
 
@@ -60,19 +69,20 @@ pub struct Apu {
   dmc: DMC,
 
   filter_chain: SoundFilterChain,
+
+  #[serde(skip)]
+  message_sx: Option<mpsc::Sender<Message>>,
+  #[serde(skip)]
+  file_writer: Option<BufWriter<File>>,
 }
 
 pub const CPU_FREQUENCY: u32 = 1789773;
 
 const FRAME_COUNTER_RATE: f64 = CPU_FREQUENCY as f64 / 240.0;
 impl Apu {
-  pub fn new() -> Self {
-    // #[cfg(not(target_os = "android"))]
-
+  pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
     #[cfg(feature = "audio")]
     let mut player = PortAudioPlayer::new();
-
-    // #[cfg(not(target_os = "android"))]
 
     #[cfg(feature = "audio")]
     let sample_rate = player.init().unwrap() as f32;
@@ -85,7 +95,6 @@ impl Apu {
       frame_value: 0,
       frame_irq: false,
 
-      // #[cfg(not(target_os = "android"))]
       #[cfg(feature = "audio")]
       player,
       sample_rate: CPU_FREQUENCY as f64 / sample_rate as f64,
@@ -99,6 +108,8 @@ impl Apu {
         SoundFilter::new_high_pass_filter(sample_rate, 440.),
         SoundFilter::new_low_pass_filter(sample_rate, 14000.),
       ],
+      message_sx: Some(message_sx),
+      file_writer: Some(BufWriter::new(File::create("test.pcm").unwrap())),
     }
   }
 
@@ -119,6 +130,9 @@ impl Apu {
         warn!("failed to stop portaudio player: {}", e);
       }
     }
+    if let Some(ref mut file_writer) = self.file_writer {
+      file_writer.flush().unwrap();
+    }
   }
 
   pub fn step(&mut self) {
@@ -138,6 +152,10 @@ impl Apu {
     }
   }
 
+  pub fn set_message_bus(&mut self, message_sx: mpsc::Sender<Message>) {
+    self.message_sx = Some(message_sx);
+  }
+
   fn send_sample(&mut self) {
     let pulse1 = self.pulse1.output();
     let pulse2 = self.pulse2.output();
@@ -146,13 +164,39 @@ impl Apu {
     let dmc = self.dmc.output();
     let sample = PULSE_TABLE[(pulse1 + pulse2) as usize]
       + TND_TABLE[(3 * triangle + 2 * noise + dmc) as usize];
-    let _after_sample = self.filter_chain.step(sample);
-    if sample != 0. {
+    let after_sample = self.filter_chain.step(sample);
+
+    if pulse1 + pulse2 + triangle + noise + dmc != 0 {
+      if let Some(ref mut file_writer) = self.file_writer {
+        file_writer
+          .write(format!("{} {} {} {} {}\n", pulse1, pulse2, triangle, noise, dmc).as_bytes())
+          .unwrap();
+      }
+    }
+    if after_sample != sample {
+      if let Some(ref mut file_writer) = self.file_writer {
+        file_writer
+          .write(
+            format!(
+              "filter chain changed value: {} -> {}\n",
+              sample, after_sample
+            )
+            .as_bytes(),
+          )
+          .unwrap();
+      }
       // info!("sample: {:?} {:?}", after_sample, sample);
     }
 
     #[cfg(feature = "audio")]
     self.player.send_sample(after_sample);
+    if after_sample > 0.0 {
+      if let Some(ref mut file_writer) = self.file_writer {
+        file_writer
+          .write(format!("{}\r", after_sample).as_bytes())
+          .unwrap();
+      }
+    }
   }
 
   // mode 0:    mode 1:       function
@@ -172,12 +216,12 @@ impl Apu {
           self.step_envelope();
           self.step_sweep();
           self.step_length();
-          self.fire_irq();
         }
         3 => {
           self.step_envelope();
           self.step_sweep();
           self.step_length();
+          self.fire_irq();
         }
         _ => (),
       }
@@ -185,6 +229,7 @@ impl Apu {
       match self.frame_value {
         0 | 2 => self.step_envelope(),
         1 | 3 => {
+          self.step_envelope();
           self.step_sweep();
           self.step_length();
         }
@@ -222,7 +267,18 @@ impl Apu {
     self.noise.step_length();
   }
 
-  pub fn fire_irq(&self) {}
+  pub fn fire_irq(&self) {
+    if self.frame_irq {
+      if let Err(e) = self
+        .message_sx
+        .as_ref()
+        .unwrap()
+        .send(Message::CpuInterrupt(crate::cpu::InterruptType::IRQ))
+      {
+        log::error!("failed to send irq message: {:?}", e);
+      }
+    }
+  }
 
   pub fn read_status(&self) -> Byte {
     info!("read status");

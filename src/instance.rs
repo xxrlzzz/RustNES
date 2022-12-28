@@ -1,13 +1,13 @@
 use std::{
   fs::OpenOptions,
-  io::Write,
+  io::{BufReader, BufWriter, Write},
   sync::{Arc, Condvar, Mutex},
   time::Duration,
 };
 
+use ciborium::{de::from_reader, ser::into_writer};
 use image::{ImageBuffer, Rgba, RgbaImage};
 use log::{error, info, warn};
-use serde_json::json;
 use std::sync::mpsc;
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
   bus::{main_bus::MainBus, message_bus::Message},
   cartridge::Cartridge,
   common::instant::Instant,
-  cpu::{Cpu, InterruptType},
+  cpu::Cpu,
   emulator::RuntimeConfig,
   mapper::factory,
   ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES},
@@ -106,8 +106,8 @@ impl Instance {
   pub(crate) fn consume_message(&mut self) {
     while let Ok(message) = self.message_rx.try_recv() {
       match message {
-        Message::CpuInterrupt => {
-          self.cpu.interrupt(InterruptType::NMI);
+        Message::CpuInterrupt(interrupt) => {
+          self.cpu.interrupt(interrupt);
         }
         Message::PpuRender(frame) => {
           self.rgba = Some(frame);
@@ -205,59 +205,52 @@ impl Instance {
     }
   }
 
-  fn save(&self, file: &String) -> Result<(), std::io::Error> {
+  pub fn save(&self, file: &String) -> Result<(), std::io::Error> {
     let path = std::path::Path::new(file);
+    log::info!("save to {}", path.display());
     {
       let dir = path.parent().expect("invalid path");
-      if !dir.exists() {
+      if !dir.exists() && dir != std::path::Path::new("") {
+        log::debug!("create dir {:?}", dir);
         std::fs::create_dir(dir)?;
       }
     }
     let mut file = std::fs::File::create(path)?;
-    let json = json!({
-      "apu": serde_json::to_string(&*self.apu.lock().unwrap()).unwrap(),
-      "cpu": serde_json::to_string(&self.cpu).unwrap(),
-      "ppu": serde_json::to_string(&*self.ppu.lock().unwrap()).unwrap(),
-      "main_bus" : self.cpu.main_bus().save(),
-    });
-    file.write_all(json.to_string().as_bytes())
+    let mut writer = BufWriter::new(&mut file);
+    into_writer(&self.cpu, &mut writer).unwrap();
+    into_writer(&*self.apu.lock().unwrap(), &mut writer).unwrap();
+    into_writer(&*self.ppu.lock().unwrap(), &mut writer).unwrap();
+    writer = self.cpu.main_bus().save_binary(writer);
+    writer.flush()
   }
 
   pub fn load(runtime_config: &RuntimeConfig) -> Result<Self, std::io::Error> {
     let file = OpenOptions::new()
       .read(true)
       .open(&runtime_config.save_path)?;
-
-    let json_obj: serde_json::Value = serde_json::from_reader(file)?;
+    let mut reader = BufReader::new(file);
     let (message_sx, message_rx) = mpsc::channel::<Message>();
 
-    let mut cpu: Cpu = json_obj
-      .get("cpu")
-      .map(|cpu_str| serde_json::from_value(cpu_str.clone()).unwrap())
-      .unwrap();
-    let apu = json_obj
-      .get("apu")
-      .map(|apu_str| {
-        let mut apu: Apu = serde_json::from_value(apu_str.clone()).unwrap();
+    let mut cpu: Cpu = from_reader(&mut reader).unwrap();
+    let apu = from_reader(&mut reader)
+      .map(|mut apu: Apu| {
+        apu.set_message_bus(message_sx.clone());
         apu.start();
+
         Arc::new(Mutex::new(apu))
       })
       .unwrap();
-    let ppu = json_obj
-      .get("ppu")
-      .map(|ppu_str| {
-        let mut ppu: Ppu = serde_json::from_value(ppu_str.clone()).unwrap();
+    let ppu = from_reader(&mut reader)
+      .map(|mut ppu: Ppu| {
         ppu.set_message_bus(message_sx);
         ppu.image = RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32);
 
         Arc::new(Mutex::new(ppu))
       })
       .unwrap();
-    json_obj.get("main_bus").map(|main_bus| {
-      let mut main_bus = MainBus::load(main_bus, ppu.clone(), apu.clone());
-      main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
-      cpu.set_main_bus(main_bus);
-    });
+    let mut main_bus = MainBus::load_binary(reader, ppu.clone(), apu.clone());
+    main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
+    cpu.set_main_bus(main_bus);
 
     let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
     #[cfg(not(feature = "wasm"))]
@@ -268,8 +261,8 @@ impl Instance {
 
   fn init_rom(cartridge: Cartridge, runtime_config: &RuntimeConfig) -> Option<Self> {
     let (message_sx, message_rx) = mpsc::channel::<Message>();
-    let ppu = Arc::new(Mutex::new(Ppu::new(message_sx)));
-    let apu = Arc::new(Mutex::new(Apu::new()));
+    let ppu = Arc::new(Mutex::new(Ppu::new(message_sx.clone())));
+    let apu = Arc::new(Mutex::new(Apu::new(message_sx)));
     let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
 

@@ -17,6 +17,7 @@ pub struct Controller {
   enable_strobe: bool,
   key_states: u8,
   key_bindings: Vec<KeyType>,
+  #[allow(dead_code)]
   enable_remote: bool,
 }
 

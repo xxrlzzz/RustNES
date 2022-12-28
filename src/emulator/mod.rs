@@ -11,6 +11,7 @@ mod web;
 
 use std::time::Duration;
 
+#[allow(unused_imports)]
 use log::{debug, info};
 
 use crate::apu::CPU_FREQUENCY;
@@ -93,5 +94,38 @@ impl Emulator {
   #[cfg(not(any(feature = "use_sdl2", feature = "use_gl")))]
   pub fn run(&mut self, mut _instance: Instance) {
     info!("start running");
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::{
+    fs::{self},
+    path::Path,
+  };
+
+  use crate::{controller, instance::Instance, logger};
+
+  use super::Emulator;
+
+  fn create_dummy_emulator() -> (Emulator, Instance) {
+    let (p1_key, p2_key) =
+      controller::key_binding_parser::parse_key_binding("assets/keybindings.ini");
+    let emulator = Emulator::new(2.0, "tmp".to_string(), p1_key, p2_key);
+    let instance = emulator.create_instance("assets/mario.nes");
+    (emulator, instance)
+  }
+
+  #[test]
+  fn save_load_test() {
+    match logger::init() {
+      Err(_) => return,
+      Ok(_) => {}
+    };
+    let (emulator, instance) = create_dummy_emulator();
+    instance.save(&"tmp".to_string()).unwrap();
+
+    Instance::load(&emulator.runtime_config).unwrap();
+    fs::remove_file(Path::new("tmp")).unwrap();
   }
 }
