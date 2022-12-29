@@ -31,6 +31,7 @@ impl NRom {
 }
 
 impl Mapper for NRom {
+  #[inline]
   fn read_prg(&self, addr: Address) -> Byte {
     if self.one_bank {
       self.cart.get_rom()[((addr - 0x8000) & 0x3FFF) as usize]
@@ -39,10 +40,12 @@ impl Mapper for NRom {
     }
   }
 
+  #[inline]
   fn write_prg(&mut self, addr: Address, _: Byte) {
     warn!("ROM memory write attempt at {:#x}", addr);
   }
 
+  #[inline]
   fn read_chr(&self, addr: Address) -> Byte {
     match &self.character_ram {
       Some(ram) => ram[addr as usize],
@@ -50,6 +53,7 @@ impl Mapper for NRom {
     }
   }
 
+  #[inline]
   fn write_chr(&mut self, addr: Address, value: Byte) {
     match &mut self.character_ram {
       Some(ram) => ram[addr as usize] = value,
@@ -57,10 +61,12 @@ impl Mapper for NRom {
     }
   }
 
+  #[inline]
   fn has_extended_ram(&self) -> bool {
     self.cart.has_extended_ram()
   }
 
+  #[inline]
   fn get_name_table_mirroring(&self) -> u8 {
     self.cart.get_name_table_mirroring()
   }

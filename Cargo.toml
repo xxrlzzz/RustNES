@@ -35,6 +35,9 @@ wasm-bindgen = { version = "0.2.74", optional = true }
 wasm-rgame = { version = "0.0.1", optional = true }
 wasm-logger = { version = "0.2.0", optional = true }
 
+rand = "0.8.5"
+anyhow = "1.0.68"
+
 [build-dependencies]
 dunce = "1.0"
 
@@ -72,10 +75,13 @@ crate-type = ["cdylib", "lib"]
 name = "emulator"
 path = "src/main.rs"
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2.8", features = ["js"] }
+
 [features]
-default = ["use_sdl2", "audio"]
+default = ["wasm"]
 use_gl = ["gl", "glfw"]
-audio = ["portaudio"]
+native-audio = ["portaudio"]
 android = ["android_logger", "jni"]
 wasm = ["js-sys", "wasm-bindgen", "wasm-rgame", "wasm-logger"]
 use_sdl2 = ["sdl2"]

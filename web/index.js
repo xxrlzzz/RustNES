@@ -3,7 +3,8 @@
 import * as wasm from "./pkg";
 // import * as wasm from "rust_nes";
 import mario_url from "./assets/mario.nes";
-console.log("1")
+import State from "./state";
+
 let engine = new RTCEngine();
 engine.init();
 let stream = document.getElementById("canvas").captureStream(30);
@@ -24,6 +25,8 @@ channel.onclose = () => {
   console.log("data channel close");
 };
 
+let state = new State();
+
 wasm.wasm_main();
 fetch(mario_url, {
   headers: {
@@ -35,5 +38,5 @@ fetch(mario_url, {
   })
   .then((array) => {
     let mario = new Uint8Array(array);
-    wasm.start(mario, "canvas");
+    state.load_rom(mario);
   });

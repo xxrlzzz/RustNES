@@ -7,7 +7,7 @@ use crate::mapper::cn_rom::CnRom;
 use crate::mapper::n_rom::NRom;
 use crate::mapper::ux_rom::UxRom;
 use crate::mapper::Mapper;
-use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 use super::sx_rom::SxRom;
 
@@ -17,7 +17,7 @@ pub(crate) const SXROM: MapperType = 1;
 pub(crate) const UXROM: MapperType = 2;
 pub(crate) const CNROM: MapperType = 3;
 
-pub type MirrorCallback = Box<dyn FnMut(u8) -> () + Sync + Send>;
+pub type MirrorCallback = Box<dyn FnMut(u8) -> ()>;
 
 #[derive(
   Default, Debug, Clone, Copy, IntoPrimitive, FromPrimitive, PartialEq, Serialize, Deserialize,
@@ -35,13 +35,13 @@ pub enum NameTableMirroring {
 pub fn create_mapper<'a>(
   cartridge: Cartridge,
   mirror_cb: MirrorCallback,
-) -> Arc<Mutex<dyn Mapper + 'a + Sync + Send>> {
+) -> Rc<RefCell<dyn Mapper + 'a>> {
   let mapper_type = cartridge.get_mapper();
   match mapper_type {
-    NROM => Arc::new(Mutex::new(NRom::new(cartridge))),
-    SXROM => Arc::new(Mutex::new(SxRom::new(cartridge, mirror_cb))),
-    UXROM => Arc::new(Mutex::new(UxRom::new(cartridge))),
-    CNROM => Arc::new(Mutex::new(CnRom::new(cartridge))),
+    NROM => Rc::new(RefCell::new(NRom::new(cartridge))),
+    SXROM => Rc::new(RefCell::new(SxRom::new(cartridge, mirror_cb))),
+    UXROM => Rc::new(RefCell::new(UxRom::new(cartridge))),
+    CNROM => Rc::new(RefCell::new(CnRom::new(cartridge))),
     _ => {
       panic!("invalid mapper type received {}", mapper_type);
     }
@@ -52,24 +52,24 @@ pub fn load_mapper<'a>(
   mapper_type: Byte,
   serialized: &str,
   mirror_cb: MirrorCallback,
-) -> Arc<Mutex<dyn Mapper + 'a + Send + Sync>> {
+) -> Rc<RefCell<dyn Mapper + 'a>> {
   match mapper_type {
     NROM => {
       let mapper_typed: NRom = serde_json::from_str(serialized).unwrap();
-      Arc::new(Mutex::new(mapper_typed))
+      Rc::new(RefCell::new(mapper_typed))
     }
     SXROM => {
       let mut mapper_typed: SxRom = serde_json::from_str(serialized).unwrap();
       mapper_typed.set_mirror_cb(mirror_cb);
-      Arc::new(Mutex::new(mapper_typed))
+      Rc::new(RefCell::new(mapper_typed))
     }
     UXROM => {
       let mapper_typed: UxRom = serde_json::from_str(serialized).unwrap();
-      Arc::new(Mutex::new(mapper_typed))
+      Rc::new(RefCell::new(mapper_typed))
     }
     CNROM => {
       let mapper_typed: CnRom = serde_json::from_str(serialized).unwrap();
-      Arc::new(Mutex::new(mapper_typed))
+      Rc::new(RefCell::new(mapper_typed))
     }
     _ => {
       panic!("invalid mapper type received {}", mapper_type);

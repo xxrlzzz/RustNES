@@ -57,4 +57,53 @@ mod tests {
     }
     println!("total cost :{:?}", Instant::now() - start);
   }
+
+  #[test]
+  fn match_test() {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let n = rng.gen_range(0x00..=0xFF);
+    let mut sum = 0;
+    let mut start = Instant::now();
+    let time = 10000;
+    for _ in 0..time {
+      for i in 0..n {
+        sum += match i {
+          0x00..=0x1F => 1,
+          0x20..=0x2F => 2,
+          0x30..=0x4F => 4,
+          0x50..=0x8F => 5,
+          0x90..=0xFF => 3,
+          _ => 0,
+        }
+      }
+    }
+    println!("total cost :{:?}, sum {}", Instant::now() - start, sum);
+    start = Instant::now();
+    for _ in 0..time {
+      for i in 0..n {
+        sum += if i <= 0x1F {
+          1
+        } else if i <= 0x2F {
+          2
+        } else if i <= 0x4F {
+          4
+        } else if i <= 0x8F {
+          5
+        } else {
+          3
+        };
+      }
+    }
+    println!(
+      "total cost :{:?}, sum {}",
+      (Instant::now() - start) * 100,
+      sum
+    );
+    match 9 {
+      1..=5 => println!("1..=5"),
+      6..=9 => println!("6..=10"),
+      _ => println!("other"),
+    }
+  }
 }

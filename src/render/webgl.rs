@@ -8,7 +8,7 @@ use crate::instance::FrameBuffer;
 
 use super::shader::{FRAGMENT_SHADER_SOURCE, INDICES, VERTEX_SHADER_SOURCE, VERTICES};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GlWrapper {
   context: GL,
   program: WebGlProgram,

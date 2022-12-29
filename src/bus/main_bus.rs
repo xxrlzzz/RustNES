@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::apu::Apu;
 use crate::common::*;
@@ -41,8 +42,9 @@ pub struct MainBus {
   ram: Vec<Byte>,
   #[serde(with = "serde_bytes")]
   ext_ram: Vec<Byte>,
+  has_ext_ram: bool,
   #[serde(skip)]
-  mapper: Option<Arc<Mutex<dyn Mapper + Send + Sync>>>,
+  mapper: Option<Rc<RefCell<dyn Mapper>>>,
   #[serde(skip)]
   registers: Vec<Arc<Mutex<dyn RegisterHandler>>>,
   #[serde(skip)]
@@ -58,6 +60,7 @@ impl MainBus {
     Self {
       ram: vec![0; 0x800],
       ext_ram: vec![],
+      has_ext_ram: false,
       mapper: None,
       registers: vec![ppu, apu],
       control1: Controller::new(),
@@ -71,7 +74,7 @@ impl MainBus {
     into_writer(&self.ram, &mut writer).unwrap();
     into_writer(&self.ext_ram, &mut writer).unwrap();
     into_writer(&self.skip_dma_cycles, &mut writer).unwrap();
-    let mapper = self.mapper.as_ref().unwrap().lock().unwrap();
+    let mapper = self.mapper.as_ref().unwrap().borrow();
 
     into_writer(&mapper.mapper_type(), &mut writer).unwrap();
     into_writer(&mapper.save(), &mut writer).unwrap();
@@ -106,6 +109,7 @@ impl MainBus {
     Self {
       ram,
       ext_ram,
+      has_ext_ram: false,
       mapper: Some(mapper),
       registers: vec![ppu, apu],
       control1: Controller::new(),
@@ -114,8 +118,9 @@ impl MainBus {
     }
   }
 
-  pub fn set_mapper(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
-    if mapper.lock().unwrap().has_extended_ram() {
+  pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
+    if mapper.borrow().has_extended_ram() {
+      self.has_ext_ram = true;
       self.ext_ram.resize(0x2000, 0);
     }
     self.mapper = Some(mapper);
@@ -173,19 +178,11 @@ impl MainBus {
         .mapper
         .as_ref()
         .unwrap()
-        .lock()
-        .unwrap()
+        .borrow_mut()
         .write_prg(addr, value);
       // warn!("Expansion ROM write attempted. This currently unsupported");
     } else if addr < 0x8000 {
-      if self
-        .mapper
-        .as_ref()
-        .unwrap()
-        .lock()
-        .unwrap()
-        .has_extended_ram()
-      {
+      if self.has_ext_ram {
         self.ext_ram[(addr - 0x6000) as usize] = value;
       }
     } else {
@@ -193,37 +190,26 @@ impl MainBus {
         .mapper
         .as_ref()
         .unwrap()
-        .lock()
-        .unwrap()
+        .borrow_mut()
         .write_prg(addr, value);
     }
   }
 
+  #[inline]
   pub fn save_read(&self, addr: Address) -> Byte {
-    if addr < 0x2000 {
-      return self.ram[(addr & 0x7ff) as usize];
-    }
-    if addr < 0x4020 {
-      return 0;
-    }
-    if addr < 0x6000 {
-      self.mapper.as_ref().unwrap().lock().unwrap().read_prg(addr);
-      // warn!("Expansion ROM read attempted. This currently unsupported");
-    } else if addr < 0x8000 {
-      if self
-        .mapper
-        .as_ref()
-        .unwrap()
-        .lock()
-        .unwrap()
-        .has_extended_ram()
-      {
-        return self.ext_ram[(addr - 0x6000) as usize];
+    match addr {
+      0x0000..=0x1fff => self.ram[(addr & 0x07ff) as usize],
+      0x2000..=0x401f => 0,
+      0x4020..=0x5fff => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
+      0x6000..=0x7fff => {
+        if self.has_ext_ram {
+          self.ext_ram[(addr - 0x6000) as usize]
+        } else {
+          0
+        }
       }
-    } else {
-      return self.mapper.as_ref().unwrap().lock().unwrap().read_prg(addr);
+      _ => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
     }
-    0
   }
 
   pub fn read_extra(&mut self, addr: Address) -> Byte {
@@ -248,6 +234,7 @@ impl MainBus {
     };
   }
 
+  #[inline]
   pub fn read(&mut self, addr: Address) -> Byte {
     if addr < 0x4020 && addr > 0x2000 {
       return self.read_extra(addr);
@@ -255,6 +242,7 @@ impl MainBus {
     self.save_read(addr)
   }
 
+  #[inline]
   pub fn read_addr(&mut self, addr: Address) -> Address {
     self.read(addr) as Address
   }

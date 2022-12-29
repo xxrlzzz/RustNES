@@ -8,3 +8,5 @@ native-libs/
 
 save/
 assets/*.nes
+test.pcm
+

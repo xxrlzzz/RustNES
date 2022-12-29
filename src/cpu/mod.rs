@@ -156,6 +156,7 @@ impl Cpu {
     );
   }
 
+  #[inline]
   pub fn trigger_interrupt(&mut self, i_type: InterruptType) {
     if self.flag.get_at(flag_const::INTERRUPT)
       && i_type != InterruptType::NMI
@@ -167,13 +168,6 @@ impl Cpu {
   }
 
   pub fn interrupt(&mut self, i_type: InterruptType) {
-    // if self.flag.get_at(flag_const::INTERRUPT)
-    //   && i_type != InterruptType::NMI
-    //   && i_type != InterruptType::BRK
-    // {
-    //   return;
-    // }
-
     if i_type == InterruptType::BRK {
       self.r_pc += 1;
     }
@@ -201,21 +195,25 @@ impl Cpu {
     self.skip_cycles += INTERRUPT_CYCLES;
   }
 
+  #[inline]
   fn push_stack(&mut self, value: Byte) {
     self.main_bus.write(0x100 | self.r_sp as Address, value);
     // Hardware stacks grow downward!
     self.r_sp -= 1;
   }
 
+  #[inline]
   fn pull_stack(&mut self) -> Byte {
     self.r_sp += 1;
     self.main_bus.read(0x100 | self.r_sp as Address)
   }
 
+  #[inline]
   fn pull_stack_16(&mut self) -> Address {
     return self.pull_stack() as Address | (self.pull_stack() as Address) << 8;
   }
 
+  #[inline]
   fn set_zn(&mut self, value: Byte) {
     self.flag.set_at(flag_const::ZERO, value == 0);
     self
@@ -223,32 +221,36 @@ impl Cpu {
       .set_at(flag_const::NEGATIVE, bit_eq(value, flag_const::NEGATIVE));
   }
 
+  #[inline]
   fn set_page_crossed(&mut self, addr_a: Address, addr_b: Address, inc: u32) {
     if (addr_a & 0xFF00) != (addr_b & 0xFF00) {
       self.skip_cycles += inc;
     }
   }
 
+  #[inline]
   pub fn skip_dma_cycles(&mut self) {
     self.skip_cycles += DMA_CYCLES;
     // +1 if on add cycle
     self.skip_cycles += self.cycles & 1;
   }
 
+  #[inline]
   pub fn skip_dmc_cycles(&mut self) {
     self.skip_cycles += DMC_CYCLES;
   }
 
+  #[inline]
   pub fn reset_skip_cycles(&mut self) {
     self.skip_cycles = 0;
   }
 
+  #[inline]
   fn read_address(&mut self, addr: Address) -> Address {
     self.main_bus.read_addr(addr) | self.main_bus.read_addr(addr + 1) << 8
-    // let res = self.main_bus.borrow_mut().read_addr(addr);
-    // res | (self.main_bus.borrow_mut().read_addr(addr + 1) << 8)
   }
 
+  #[inline]
   fn read_and_forward_pc(&mut self) -> Address {
     let res = self.main_bus.read_addr(self.r_pc);
     self.r_pc += 1;
@@ -259,11 +261,7 @@ impl Cpu {
     self.cycles += 1;
     if self.skip_cycles > 0 {
       return self.skip_cycles;
-      // self.skip_cycles -= 1;
     }
-    // if self.skip_cycles > 0 {
-    //   return 0;
-    // }
 
     if self.interrupt != InterruptType::None {
       self.interrupt(self.interrupt.clone());

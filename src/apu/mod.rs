@@ -1,9 +1,9 @@
-// #[cfg(not(target_os = "android"))]
-#[cfg(feature = "audio")]
-mod portaudio_player;
 mod sound_filter;
 mod sound_wave;
 
+mod player;
+
+#[allow(unused_imports)]
 use std::{
   fs::File,
   io::{BufWriter, Write},
@@ -19,13 +19,11 @@ use crate::{
     message_bus::Message,
   },
   common::*,
+  NesResult,
 };
 
-// #[cfg(not(target_os = "android"))]
-#[cfg(feature = "audio")]
-use self::portaudio_player::PortAudioPlayer;
-
 use self::{
+  player::Player,
   sound_filter::{Filter, SoundFilter, SoundFilterChain},
   sound_wave::{Noise, Pulse, Triangle, DMC},
 };
@@ -56,10 +54,8 @@ pub struct Apu {
   frame_value: Byte,
   frame_irq: bool,
 
-  // #[cfg(not(target_os = "android"))]
-  #[cfg(feature = "audio")]
   #[serde(skip)]
-  player: PortAudioPlayer,
+  player: Box<dyn Player>,
   sample_rate: f64,
 
   pulse1: Pulse,
@@ -72,6 +68,7 @@ pub struct Apu {
 
   #[serde(skip)]
   message_sx: Option<mpsc::Sender<Message>>,
+  #[cfg(feature = "debug_audio")]
   #[serde(skip)]
   file_writer: Option<BufWriter<File>>,
 }
@@ -84,21 +81,16 @@ type ReadCallback = Box<dyn FnMut(Address) -> Byte>;
 
 impl Apu {
   pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
-    #[cfg(feature = "audio")]
-    let mut player = PortAudioPlayer::new();
+    let mut player = Box::<dyn Player>::default();
 
-    #[cfg(feature = "audio")]
     let sample_rate = player.init().unwrap() as f32;
 
-    #[cfg(not(feature = "audio"))]
-    let sample_rate = 44100.0;
     Self {
       cycle: 0,
       frame_period: 0,
       frame_value: 0,
       frame_irq: false,
 
-      #[cfg(feature = "audio")]
       player,
       sample_rate: CPU_FREQUENCY as f64 / sample_rate as f64,
       pulse1: Pulse::new(1),
@@ -112,12 +104,16 @@ impl Apu {
         SoundFilter::new_low_pass_filter(sample_rate, 14000.),
       ],
       message_sx: Some(message_sx),
+      #[cfg(feature = "debug_audio")]
       file_writer: Some(BufWriter::new(File::create("test.pcm").unwrap())),
     }
   }
 
+  pub fn audio_frame(&mut self, buf_size: usize) -> NesResult<Vec<f32>> {
+    self.player.pull_samples(buf_size)
+  }
+
   pub fn start(&mut self) {
-    #[cfg(feature = "audio")]
     match self.player.start() {
       Ok(_) => {}
       Err(e) => {
@@ -126,13 +122,14 @@ impl Apu {
     }
   }
   pub fn stop(&mut self) {
-    #[cfg(feature = "audio")]
     match self.player.stop() {
       Ok(_) => {}
       Err(e) => {
         warn!("failed to stop portaudio player: {}", e);
       }
     }
+
+    #[cfg(feature = "debug_audio")]
     if let Some(ref mut file_writer) = self.file_writer {
       file_writer.flush().unwrap();
     }
@@ -169,6 +166,7 @@ impl Apu {
       + TND_TABLE[(3 * triangle + 2 * noise + dmc) as usize];
     let after_sample = self.filter_chain.step(sample);
 
+    #[cfg(feature = "debug_audio")]
     if pulse1 + pulse2 + triangle + noise + dmc != 0 {
       if let Some(ref mut file_writer) = self.file_writer {
         file_writer
@@ -176,6 +174,7 @@ impl Apu {
           .unwrap();
       }
     }
+    #[cfg(feature = "debug_audio")]
     if after_sample != sample {
       if let Some(ref mut file_writer) = self.file_writer {
         file_writer
@@ -191,15 +190,7 @@ impl Apu {
       // info!("sample: {:?} {:?}", after_sample, sample);
     }
 
-    #[cfg(feature = "audio")]
-    self.player.send_sample(after_sample);
-    if after_sample > 0.0 {
-      if let Some(ref mut file_writer) = self.file_writer {
-        file_writer
-          .write(format!("{}\r", after_sample).as_bytes())
-          .unwrap();
-      }
-    }
+    let _ = self.player.send_sample(after_sample);
   }
 
   // mode 0:    mode 1:       function

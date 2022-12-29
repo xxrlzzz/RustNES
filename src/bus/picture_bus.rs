@@ -1,6 +1,7 @@
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::vec::Vec;
 
 use crate::common::*;
@@ -24,7 +25,7 @@ pub struct PictureBus {
   name_table3: usize,
   palette: Vec<Byte>,
   #[serde(skip)]
-  mapper: Option<Arc<Mutex<dyn Mapper + Send + Sync>>>,
+  mapper: Option<Rc<RefCell<dyn Mapper>>>, // TODO: move mapper to PPU to save lock time?
 }
 
 impl PictureBus {
@@ -40,36 +41,51 @@ impl PictureBus {
     }
   }
 
-  pub fn set_mapper(&mut self, mapper: Arc<Mutex<dyn Mapper + Send + Sync>>) {
+  pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
     self.mapper = Some(mapper);
     self.update_mirroring(None);
   }
 
+  #[inline]
   fn get_name_table(&self, addr: Address) -> usize {
-    if addr < 0x2400 {
-      self.name_table0
-    } else if addr < 0x2800 {
-      self.name_table1
-    } else if addr < 0x2C00 {
-      self.name_table2
-    } else {
-      self.name_table3
+    match addr {
+      0x2000..=0x23FF => self.name_table0,
+      0x2400..=0x27FF => self.name_table1,
+      0x2800..=0x2BFF => self.name_table2,
+      _ => self.name_table3,
     }
   }
 
+  #[inline]
+  pub fn batch_read(&self, addr1: Address, addr2: Address, shift_time: u8) -> Byte {
+    let mapper = self.mapper.as_ref().unwrap().borrow();
+    let value1 = match addr1 {
+      0x0000..=0x1FFF => mapper.read_chr(addr1),
+      0x2000..=0x3EFF => self.ram[self.get_name_table(addr1) + (addr1 & 0x3FF) as usize],
+      0x3F00..=0x3FFF => self.palette[(addr1 & 0x1F) as usize],
+      _ => 0,
+    } >> shift_time;
+    let value2 = match addr2 {
+      0x0000..=0x1FFF => mapper.read_chr(addr2),
+      0x2000..=0x3EFF => self.ram[self.get_name_table(addr2) + (addr2 & 0x3FF) as usize],
+      0x3F00..=0x3FFF => self.palette[(addr2 & 0x1F) as usize],
+      _ => 0,
+    } >> shift_time;
+    value1 & 1 | ((value2 & 1) << 1)
+  }
+
+  #[inline]
   pub fn read(&self, addr: Address) -> Byte {
-    if addr < 0x2000 {
+    match addr {
       // TODO(xxrl) avoid borrow for each time reading will save performance.
-      self.mapper.as_ref().unwrap().lock().unwrap().read_chr(addr)
-    } else if addr < 0x3EFF {
-      self.ram[self.get_name_table(addr) + (addr & 0x3FF) as usize]
-    } else if addr < 0x3FFF {
-      self.palette[(addr & 0x1F) as usize]
-    } else {
-      0
+      0x0000..=0x1FFF => self.mapper.as_ref().unwrap().borrow().read_chr(addr),
+      0x2000..=0x3EFF => self.ram[self.get_name_table(addr) + (addr & 0x3FF) as usize],
+      0x3F00..=0x3FFF => self.palette[(addr & 0x1F) as usize],
+      _ => 0,
     }
   }
 
+  #[inline]
   pub fn read_palette(&self, palette_addr: Byte) -> Byte {
     self.palette[palette_addr as usize]
   }
@@ -80,8 +96,7 @@ impl PictureBus {
         .mapper
         .as_ref()
         .unwrap()
-        .lock()
-        .unwrap()
+        .borrow_mut()
         .write_chr(addr, value);
     } else if addr < 0x3EFF {
       let idx = self.get_name_table(addr) + (addr & 0x3FF) as usize;
@@ -102,8 +117,7 @@ impl PictureBus {
         .mapper
         .as_ref()
         .unwrap()
-        .lock()
-        .unwrap()
+        .borrow_mut()
         .get_name_table_mirroring(),
     };
     match mirror {

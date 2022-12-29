@@ -1,7 +1,7 @@
 use std::{
   fs::OpenOptions,
   io::{BufReader, BufWriter, Write},
-  sync::{Arc, Condvar, Mutex},
+  sync::{Arc, Mutex},
   time::Duration,
 };
 
@@ -30,8 +30,6 @@ pub enum RunningStatus {
   Pause = 1,
   LostFocus = 2,
   PauseAndLostFocus = 3,
-  Exist = 4,
-  PPURun = 5,
 }
 
 impl From<u8> for RunningStatus {
@@ -78,7 +76,6 @@ pub struct Instance {
   pub(crate) cycle_timer: Instant,
   pub(crate) elapsed_time: Duration,
   pub(crate) message_rx: mpsc::Receiver<Message>,
-  pub(crate) ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
   pub(crate) rgba: Option<FrameBuffer>,
 }
 
@@ -88,7 +85,6 @@ impl Instance {
     cpu: Arc<Mutex<Cpu>>,
     ppu: Arc<Mutex<Ppu>>,
     message_rx: mpsc::Receiver<Message>,
-    ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
   ) -> Self {
     Self {
       apu,
@@ -96,7 +92,6 @@ impl Instance {
       ppu,
       message_rx,
       stat: RunningStatus::Running,
-      ppu_cond,
       cycle_timer: Instant::now(),
       elapsed_time: Duration::new(0, 0),
       rgba: None,
@@ -139,41 +134,6 @@ impl Instance {
     self.cycle_timer = now;
   }
 
-  // If running on multi-thread, render ppu on different thread.
-  // Disabled due to sync with performance issue.
-  #[allow(dead_code)]
-  pub(crate) fn launch_ppu(
-    ppu: Arc<Mutex<Ppu>>,
-    cond: Arc<(Mutex<RunningStatus>, Condvar)>,
-  ) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || loop {
-      let (lock, cvar) = &*cond;
-      {
-        let mut started = lock.lock().unwrap();
-        while *started == RunningStatus::Pause {
-          started = cvar.wait(started).unwrap();
-        }
-        if *started == RunningStatus::Exist {
-          break;
-        }
-        *started = RunningStatus::PPURun;
-      }
-      let ppu = ppu.clone();
-      {
-        let mut ppu = ppu.lock().unwrap();
-
-        ppu.step();
-        ppu.step();
-        ppu.step();
-      }
-      {
-        let mut started = lock.lock().unwrap();
-        *started = RunningStatus::Running;
-        cvar.notify_one();
-      }
-    })
-  }
-
   pub(crate) fn step(&mut self) -> u32 {
     let circle = {
       let mut cpu = self.cpu.lock().unwrap();
@@ -201,11 +161,6 @@ impl Instance {
   }
 
   pub fn stop(&mut self) {
-    let (lock, cvar) = &*self.ppu_cond;
-    let mut started = lock.lock().unwrap();
-    *started = RunningStatus::Exist;
-    cvar.notify_one();
-
     self.apu.lock().unwrap().stop();
   }
 }
@@ -281,11 +236,7 @@ impl Instance {
       inner_cpu.main_bus_mut().read(addr)
     }));
 
-    let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
-    #[cfg(not(feature = "wasm"))]
-    Self::launch_ppu(ppu.clone(), pair.clone());
-
-    Ok(Self::new(apu, cpu, ppu, message_rx, pair))
+    Ok(Self::new(apu, cpu, ppu, message_rx))
   }
 
   fn init_rom(cartridge: Cartridge, runtime_config: &RuntimeConfig) -> Option<Self> {
@@ -326,10 +277,7 @@ impl Instance {
     }
 
     // ppu.borrow_mut().reset();
-    let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
-    #[cfg(not(feature = "wasm"))]
-    Self::launch_ppu(ppu.clone(), pair.clone());
-    let instance = Self::new(apu, cpu.clone(), ppu, message_rx, pair);
+    let instance = Self::new(apu, cpu.clone(), ppu, message_rx);
 
     Some(instance)
   }

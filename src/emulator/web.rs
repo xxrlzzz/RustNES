@@ -6,7 +6,6 @@ use crate::controller::web_key::{self, WebEvent};
 use crate::instance::Instance;
 
 impl Emulator {
-  #[cfg(feature = "wasm")]
   pub fn frame(&mut self, instance: &mut Instance) -> Option<crate::instance::FrameBuffer> {
     let config = self.runtime_config.clone();
     for key in web_key::pull_events() {

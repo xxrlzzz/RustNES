@@ -11,6 +11,9 @@ mod mapper;
 mod ppu;
 mod render;
 
+pub type NesError = anyhow::Error;
+pub type NesResult<T> = anyhow::Result<T, NesError>;
+
 #[macro_use]
 extern crate ini;
 #[macro_use]

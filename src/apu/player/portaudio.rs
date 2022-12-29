@@ -6,6 +6,10 @@ use portaudio::{
 
 use std::sync::mpsc;
 
+use crate::NesResult;
+
+use super::Player;
+
 #[derive(Default)]
 pub struct PortAudioPlayer {
   stream: Option<Stream<NonBlocking, Output<f32>>>,
@@ -22,13 +26,9 @@ impl PortAudioPlayer {
     }
   }
 
-  pub(crate) fn send_sample(&mut self, sample: f32) {
-    match self.sender.as_ref().unwrap().send(sample) {
-      Ok(_) => {}
-      Err(_) => {
-        warn!("failed to add sample to sound buffer");
-      }
-    }
+  pub(crate) fn send_sample(&mut self, sample: f32) -> NesResult<()> {
+    self.sender.as_ref().unwrap().send(sample)?;
+    Ok(())
   }
 
   pub fn init(&mut self) -> Result<f64, Error> {
@@ -83,14 +83,36 @@ impl PortAudioPlayer {
     Ok(())
   }
 }
+
 impl Drop for PortAudioPlayer {
   fn drop(&mut self) {
-    match self.stop() {
-      Ok(_) => {}
-      Err(e) => {
-        warn!("failed to stop portaudio player: {}", e);
-      }
+    if let Err(e) = self.stop() {
+      warn!("failed to stop portaudio player: {}", e);
     }
+  }
+}
+
+impl Player for PortAudioPlayer {
+  fn init(&mut self) -> NesResult<f64> {
+    Ok(PortAudioPlayer::init(self)?)
+  }
+
+  fn start(&mut self) -> NesResult<()> {
+    PortAudioPlayer::start(self)?;
+    Ok(())
+  }
+
+  fn stop(&mut self) -> NesResult<()> {
+    PortAudioPlayer::stop(self)?;
+    Ok(())
+  }
+
+  fn send_sample(&mut self, sample: f32) -> NesResult<()> {
+    PortAudioPlayer::send_sample(self, sample)
+  }
+
+  fn pull_samples(&mut self, _samples_size: usize) -> NesResult<Vec<f32>> {
+    Ok(Vec::new())
   }
 }
 
@@ -107,7 +129,9 @@ mod test {
     player.start().unwrap();
     let sample_length = 200;
     for i in 0..sample_length {
-      player.send_sample((i as f64 / sample_length as f64 * PI * 2.0).sin() as f32);
+      player
+        .send_sample((i as f64 / sample_length as f64 * PI * 2.0).sin() as f32)
+        .expect("");
     }
     sleep(Duration::from_millis(100));
     player.stop().unwrap();
