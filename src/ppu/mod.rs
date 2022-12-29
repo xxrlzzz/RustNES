@@ -29,7 +29,7 @@ enum CharacterPage {
   High,
 }
 
-pub const _SCANLINE_END_CYCLE_LENGTH: u32 = 341;
+pub const SCANLINE_END_CYCLE_LENGTH: u32 = 341;
 const SCANLINE_END_CYCLE: usize = 340;
 pub const VISIBLE_SCANLINES: usize = 240;
 pub const SCANLINE_VISIBLE_DOTS: usize = 256;

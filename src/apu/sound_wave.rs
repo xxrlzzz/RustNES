@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::*;
 
+use super::ReadCallback;
+
 const LENGTH_TABLE: [Byte; 32] = [
   0x0A, 0xFE, 0x14, 0x02, 0x28, 0x04, 0x80, 0x06, 0xA0, 0x08, 0x3C, 0x0A, 0x0E, 0x0C, 0x1A, 0x0E,
   0x0C, 0x10, 0x18, 0x12, 0x30, 0x14, 0x60, 0x16, 0xC0, 0x18, 0x48, 0x1A, 0x10, 0x1C, 0x20, 0x1E,
@@ -424,6 +426,8 @@ pub(crate) struct DMC {
   loop_enable: bool,
   irq: bool,
   // cpu
+  #[serde(skip)]
+  read_cb: Option<ReadCallback>,
 }
 
 impl DMC {
@@ -441,7 +445,12 @@ impl DMC {
       tick_value: 0,
       loop_enable: false,
       irq: false,
+      read_cb: None,
     }
+  }
+
+  pub fn set_read_cb(&mut self, read_cb: ReadCallback) {
+    self.read_cb = Some(read_cb);
   }
 
   pub(crate) fn set_enabled(&mut self, enable: bool) {
@@ -479,6 +488,8 @@ impl DMC {
     if self.current_length <= 0 || self.bit_count_ != 0 {
       return;
     }
+    let val = self.read_cb.as_mut().unwrap()(self.current_address);
+    self.shift_register = val;
     // self.cpu.skipDMCCycles();
     // self.shift_register = self.cpu.read(self.current_address);
     self.bit_count_ = 8;

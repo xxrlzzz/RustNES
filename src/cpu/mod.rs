@@ -9,16 +9,18 @@ use serde::Serialize;
 
 mod opcodes;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Default, PartialEq, Debug, Clone)]
 pub enum InterruptType {
   IRQ,
   NMI,
   BRK,
+  #[default]
+  None,
 }
 
 // 256 read + 256 write + 1 dummy read
 const DMA_CYCLES: u32 = 513;
-const _DMC_CYCLES: u32 = 4;
+const DMC_CYCLES: u32 = 4;
 const INTERRUPT_CYCLES: u32 = 7;
 
 mod flag_const {
@@ -83,6 +85,8 @@ pub struct Cpu {
   // status flag.
   flag: Flag,
   #[serde(skip)]
+  interrupt: InterruptType,
+  #[serde(skip)]
   main_bus: MainBus,
 }
 
@@ -98,6 +102,7 @@ impl Cpu {
       r_y: 0,
       flag: Flag(0),
       main_bus,
+      interrupt: InterruptType::None,
     }
   }
 
@@ -135,13 +140,39 @@ impl Cpu {
     return self.flag.into();
   }
 
-  pub fn interrupt(&mut self, i_type: InterruptType) {
+  #[allow(dead_code)]
+  pub(crate) fn print_flag(&self) {
+    let psw = self.get_flag();
+    log::debug!(
+      "[CPU-STATUS] {:#x}:{:#x} A:{:#x}, X:{:#x}, Y:{:#x}, P:{:#x}, SP:{:#x}, CYC:{}",
+      self.r_pc,
+      self.main_bus.save_read(self.r_pc),
+      self.r_a,
+      self.r_x,
+      self.r_y,
+      psw,
+      self.r_sp,
+      (self.cycles - 1) * 3 % crate::ppu::SCANLINE_END_CYCLE_LENGTH
+    );
+  }
+
+  pub fn trigger_interrupt(&mut self, i_type: InterruptType) {
     if self.flag.get_at(flag_const::INTERRUPT)
       && i_type != InterruptType::NMI
       && i_type != InterruptType::BRK
     {
       return;
     }
+    self.interrupt = i_type;
+  }
+
+  pub fn interrupt(&mut self, i_type: InterruptType) {
+    // if self.flag.get_at(flag_const::INTERRUPT)
+    //   && i_type != InterruptType::NMI
+    //   && i_type != InterruptType::BRK
+    // {
+    //   return;
+    // }
 
     if i_type == InterruptType::BRK {
       self.r_pc += 1;
@@ -164,6 +195,7 @@ impl Cpu {
       InterruptType::IRQ => opcodes::IRQ_VECTOR,
       InterruptType::BRK => opcodes::IRQ_VECTOR,
       InterruptType::NMI => opcodes::NMI_VECTOR,
+      _ => panic!("invalid interrupt type"),
     });
 
     self.skip_cycles += INTERRUPT_CYCLES;
@@ -203,8 +235,12 @@ impl Cpu {
     self.skip_cycles += self.cycles & 1;
   }
 
-  pub fn _skip_dmc_cycles(&mut self) {
-    self.skip_cycles += _DMC_CYCLES;
+  pub fn skip_dmc_cycles(&mut self) {
+    self.skip_cycles += DMC_CYCLES;
+  }
+
+  pub fn reset_skip_cycles(&mut self) {
+    self.skip_cycles = 0;
   }
 
   fn read_address(&mut self, addr: Address) -> Address {
@@ -219,26 +255,20 @@ impl Cpu {
     res
   }
 
-  pub fn step(&mut self) {
+  pub fn step(&mut self) -> u32 {
     self.cycles += 1;
     if self.skip_cycles > 0 {
-      self.skip_cycles -= 1;
+      return self.skip_cycles;
+      // self.skip_cycles -= 1;
     }
-    if self.skip_cycles > 0 {
-      return;
+    // if self.skip_cycles > 0 {
+    //   return 0;
+    // }
+
+    if self.interrupt != InterruptType::None {
+      self.interrupt(self.interrupt.clone());
+      self.interrupt = InterruptType::None;
     }
-    // let psw = self.get_flag();
-    // debug!(
-    //   "[CPU-STATUS] {:#x}:{:#x} A:{:#x}, X:{:#x}, Y:{:#x}, P:{:#x}, SP:{:#x}, CYC:{}",
-    //   self.r_pc,
-    //   self.main_bus.borrow_mut().read(self.r_pc),
-    //   self.r_a,
-    //   self.r_x,
-    //   self.r_y,
-    //   psw,
-    //   self.r_sp,
-    //   (self.cycles - 1) * 3 % SCANLINE_END_CYCLE_LENGTH
-    // );
 
     let opcode = self.read_and_forward_pc() as Byte;
 
@@ -260,12 +290,13 @@ impl Cpu {
     } else {
       warn!("Unrecognized opcode {:#x}", opcode);
     }
+    self.skip_cycles
   }
 
   fn execute_implied(&mut self, opcode: Byte) -> bool {
     match opcode {
       operation_implied::NOP => (),
-      operation_implied::BRK => self.interrupt(InterruptType::BRK),
+      operation_implied::BRK => self.trigger_interrupt(InterruptType::BRK),
       operation_implied::JSR => {
         // Push address of next instruction - 1 ,thus r_PC + 1 instead of r_PC + 2
         // since r_PC and r_PC + 1 are address of subroutine

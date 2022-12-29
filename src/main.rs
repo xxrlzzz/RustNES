@@ -42,14 +42,14 @@ mod tests {
   use std::time::Instant;
 
   type MatrixType = std::collections::HashMap<&'static str, u128>;
-  const CPU_FREQUENCY: u32 = 1788908;
+  const CNT: u32 = 1788908;
 
   #[test]
   fn hashmap_test() {
     let mut matrix = MatrixType::default();
     let category_list = vec!["1", "2", "3"];
     let start = Instant::now();
-    for i in 0..CPU_FREQUENCY {
+    for i in 0..CNT {
       matrix
         .entry(category_list[i as usize % 3])
         .and_modify(|e| *e += 1)

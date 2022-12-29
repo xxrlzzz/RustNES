@@ -79,6 +79,9 @@ pub struct Apu {
 pub const CPU_FREQUENCY: u32 = 1789773;
 
 const FRAME_COUNTER_RATE: f64 = CPU_FREQUENCY as f64 / 240.0;
+
+type ReadCallback = Box<dyn FnMut(Address) -> Byte>;
+
 impl Apu {
   pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
     #[cfg(feature = "audio")]
@@ -278,6 +281,10 @@ impl Apu {
         log::error!("failed to send irq message: {:?}", e);
       }
     }
+  }
+
+  pub fn set_read_cb(&mut self, cb: ReadCallback) {
+    self.dmc.set_read_cb(cb);
   }
 
   pub fn read_status(&self) -> Byte {

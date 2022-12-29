@@ -53,9 +53,9 @@ impl PortAudioPlayer {
     let callback = move |OutputStreamCallbackArgs { buffer, frames, .. }| {
       let mut i = 0;
       for _ in 0..frames {
-        // Disable one channel.
+        // copy one channel.
         buffer[i] = rx.try_recv().unwrap_or(0.0);
-        buffer[i + 1] = 0.;
+        buffer[i + 1] = buffer[i];
         i += 2;
       }
       Continue

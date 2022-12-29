@@ -63,20 +63,22 @@ impl Emulator {
 
   fn one_frame(&mut self, instance: &mut Instance) -> Duration {
     let mut iter_time = CPU_FREQUENCY;
+
     instance.update_timer();
     // 1789773 / 1000 * 16
-    for i in 0..28636 {
-      instance.step();
-
-      if i % 3000 == 0 && Instant::now() - instance.cycle_timer > FRAME_DURATION {
-        iter_time = i;
+    let mut iters = 0;
+    for i in 0.. {
+      let cur_circle = instance.step();
+      iters += cur_circle;
+      if i % 100 == 0 && Instant::now() - instance.cycle_timer > FRAME_DURATION {
+        iter_time = iters;
         break;
       }
-      if instance.elapsed_time < CPU_CYCLE_DURATION {
-        iter_time = i;
+      let duration = CPU_CYCLE_DURATION * cur_circle;
+      if iters > CPU_FREQUENCY / 60 || instance.elapsed_time < duration {
+        iter_time = iters;
         break;
       }
-      instance.elapsed_time -= CPU_CYCLE_DURATION;
     }
     let cost = Instant::now() - instance.cycle_timer;
     debug!("last frame toke {:?} for {} times.", cost, iter_time);

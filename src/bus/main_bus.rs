@@ -169,7 +169,14 @@ impl MainBus {
         }
       }
     } else if addr < 0x6000 {
-      warn!("Expansion ROM write attempted. This currently unsupported");
+      self
+        .mapper
+        .as_ref()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .write_prg(addr, value);
+      // warn!("Expansion ROM write attempted. This currently unsupported");
     } else if addr < 0x8000 {
       if self
         .mapper
@@ -192,33 +199,16 @@ impl MainBus {
     }
   }
 
-  pub fn read(&mut self, addr: Address) -> Byte {
+  pub fn save_read(&self, addr: Address) -> Byte {
     if addr < 0x2000 {
       return self.ram[(addr & 0x7ff) as usize];
     }
     if addr < 0x4020 {
-      let mapped_addr = if addr < 0x4000 {
-        // PPU registers, mirrored
-        addr & 0x2007
-      } else {
-        addr
-      };
-      return match mapped_addr {
-        JOY1 => self.control1.read(),
-        JOY2 => self.control2.read(),
-        _ => {
-          for reg in &mut self.registers {
-            if let Some(value) = reg.lock().unwrap().read(mapped_addr) {
-              return value;
-            }
-          }
-          warn!("Attempt to read at {:#x} without callback registered", addr);
-          return 0;
-        }
-      };
+      return 0;
     }
     if addr < 0x6000 {
-      warn!("Expansion ROM read attempted. This currently unsupported");
+      self.mapper.as_ref().unwrap().lock().unwrap().read_prg(addr);
+      // warn!("Expansion ROM read attempted. This currently unsupported");
     } else if addr < 0x8000 {
       if self
         .mapper
@@ -234,6 +224,35 @@ impl MainBus {
       return self.mapper.as_ref().unwrap().lock().unwrap().read_prg(addr);
     }
     0
+  }
+
+  pub fn read_extra(&mut self, addr: Address) -> Byte {
+    let mapped_addr = if addr < 0x4000 {
+      // PPU registers, mirrored
+      addr & 0x2007
+    } else {
+      addr
+    };
+    return match mapped_addr {
+      JOY1 => self.control1.read(),
+      JOY2 => self.control2.read(),
+      _ => {
+        for reg in &mut self.registers {
+          if let Some(value) = reg.lock().unwrap().read(mapped_addr) {
+            return value;
+          }
+        }
+        warn!("Attempt to read at {:#x} without callback registered", addr);
+        0
+      }
+    };
+  }
+
+  pub fn read(&mut self, addr: Address) -> Byte {
+    if addr < 0x4020 && addr > 0x2000 {
+      return self.read_extra(addr);
+    }
+    self.save_read(addr)
   }
 
   pub fn read_addr(&mut self, addr: Address) -> Address {

@@ -72,7 +72,7 @@ impl RunningStatus {
 }
 pub struct Instance {
   pub(crate) apu: Arc<Mutex<Apu>>,
-  pub(crate) cpu: Cpu,
+  pub(crate) cpu: Arc<Mutex<Cpu>>,
   pub(crate) ppu: Arc<Mutex<Ppu>>,
   pub(crate) stat: RunningStatus,
   pub(crate) cycle_timer: Instant,
@@ -85,7 +85,7 @@ pub struct Instance {
 impl Instance {
   pub(crate) fn new(
     apu: Arc<Mutex<Apu>>,
-    cpu: Cpu,
+    cpu: Arc<Mutex<Cpu>>,
     ppu: Arc<Mutex<Ppu>>,
     message_rx: mpsc::Receiver<Message>,
     ppu_cond: Arc<(Mutex<RunningStatus>, Condvar)>,
@@ -107,7 +107,7 @@ impl Instance {
     while let Ok(message) = self.message_rx.try_recv() {
       match message {
         Message::CpuInterrupt(interrupt) => {
-          self.cpu.interrupt(interrupt);
+          self.cpu.lock().unwrap().trigger_interrupt(interrupt);
         }
         Message::PpuRender(frame) => {
           self.rgba = Some(frame);
@@ -174,16 +174,30 @@ impl Instance {
     })
   }
 
-  pub(crate) fn step(&mut self) {
+  pub(crate) fn step(&mut self) -> u32 {
+    let circle = {
+      let mut cpu = self.cpu.lock().unwrap();
+      let circle = cpu.step();
+      cpu.reset_skip_cycles();
+      circle
+    };
     {
       let mut ppu = self.ppu.lock().unwrap();
-      ppu.step();
-      ppu.step();
-      ppu.step();
+      for _ in 0..circle {
+        ppu.step();
+        ppu.step();
+        ppu.step();
+      }
+    }
+    {
+      let mut apu = self.apu.lock().unwrap();
+      for _ in 0..circle {
+        apu.step();
+      }
     }
     self.consume_message();
-    self.cpu.step();
-    self.apu.lock().unwrap().step();
+
+    circle
   }
 
   pub fn stop(&mut self) {
@@ -217,11 +231,19 @@ impl Instance {
     }
     let mut file = std::fs::File::create(path)?;
     let mut writer = BufWriter::new(&mut file);
-    into_writer(&self.cpu, &mut writer).unwrap();
+    into_writer(&*self.cpu.lock().unwrap(), &mut writer).unwrap();
     into_writer(&*self.apu.lock().unwrap(), &mut writer).unwrap();
     into_writer(&*self.ppu.lock().unwrap(), &mut writer).unwrap();
-    writer = self.cpu.main_bus().save_binary(writer);
-    writer.flush()
+    self
+      .cpu
+      .as_ref()
+      .lock()
+      .unwrap()
+      .main_bus()
+      .save_binary(writer)
+      .flush()?;
+    // writer.flush()
+    Ok(())
   }
 
   pub fn load(runtime_config: &RuntimeConfig) -> Result<Self, std::io::Error> {
@@ -251,6 +273,13 @@ impl Instance {
     let mut main_bus = MainBus::load_binary(reader, ppu.clone(), apu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
     cpu.set_main_bus(main_bus);
+    let cpu = Arc::new(Mutex::new(cpu));
+    let cpu_clone = cpu.clone();
+    apu.lock().unwrap().set_read_cb(Box::new(move |addr| {
+      let mut inner_cpu = cpu_clone.lock().unwrap();
+      inner_cpu.skip_dmc_cycles();
+      inner_cpu.main_bus_mut().read(addr)
+    }));
 
     let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
     #[cfg(not(feature = "wasm"))]
@@ -262,6 +291,7 @@ impl Instance {
   fn init_rom(cartridge: Cartridge, runtime_config: &RuntimeConfig) -> Option<Self> {
     let (message_sx, message_rx) = mpsc::channel::<Message>();
     let ppu = Arc::new(Mutex::new(Ppu::new(message_sx.clone())));
+
     let apu = Arc::new(Mutex::new(Apu::new(message_sx)));
     let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
@@ -281,15 +311,27 @@ impl Instance {
     );
     cpu.main_bus_mut().set_mapper(mapper.clone());
     cpu.reset();
+    let cpu = Arc::new(Mutex::new(cpu));
     ppu.lock().unwrap().set_mapper_for_bus(mapper);
+
+    {
+      let cpu_clone = cpu.clone();
+      let mut apu = apu.lock().unwrap();
+      apu.set_read_cb(Box::new(move |addr| {
+        let mut inner_cpu = cpu_clone.lock().unwrap();
+        inner_cpu.skip_dmc_cycles();
+        inner_cpu.main_bus_mut().read(addr)
+      }));
+      apu.start();
+    }
+
     // ppu.borrow_mut().reset();
-
-    apu.lock().unwrap().start();
-
     let pair = Arc::new((Mutex::new(RunningStatus::Pause), Condvar::new()));
     #[cfg(not(feature = "wasm"))]
     Self::launch_ppu(ppu.clone(), pair.clone());
-    Some(Self::new(apu, cpu, ppu, message_rx, pair))
+    let instance = Self::new(apu, cpu.clone(), ppu, message_rx, pair);
+
+    Some(instance)
   }
 
   pub(crate) fn init_rom_from_data(
