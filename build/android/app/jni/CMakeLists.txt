@@ -16,5 +16,5 @@ add_subdirectory(SDL)
 #add_subdirectory(SDL_ttf)
 
 # Your game and its CMakeLists.txt are in a subfolder named "src"
-add_subdirectory(src)
+#add_subdirectory(src)
 

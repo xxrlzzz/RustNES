@@ -50,7 +50,6 @@ pub fn keyboard_listen() -> Result<(), JsValue> {
   info!("keyboard_listen");
   {
     let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-      // message_keydown.set_text_content(Some(&format!("keydown: {}", event.key_code())));
       KEYBOARD_STATE
         .lock()
         .unwrap()
@@ -65,7 +64,6 @@ pub fn keyboard_listen() -> Result<(), JsValue> {
   }
   {
     let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-      // message_keyup.set_text_content(Some(&format!("keyup: {}", event.key_code())));
       KEYBOARD_STATE
         .lock()
         .unwrap()

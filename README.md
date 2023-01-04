@@ -23,6 +23,17 @@ Note due to the performance issue, you should run in release mode to get enough 
 - Web(Wasm + WebGL)
 
 
+## Screenshots
+
+- web
+![web](./img/web.png)
+
+- desktop 
+![desktop](./img/desktop.png)
+
+- integration with streaming and co-play
+![stream](./img/stream_integration.png)
+
 ## TODO
 
 - [x] Audio support

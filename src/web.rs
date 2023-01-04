@@ -49,6 +49,15 @@ impl WebNes {
     })
   }
 
+  pub fn default() -> Self {
+    let data = include_bytes!("../assets/mario.nes");
+    let ele = "canvas";
+    let audio_sample_rate = 44100.0;
+    let data = js_sys::Uint8Array::from(data.as_ref());
+    let ele = JsValue::from_str(ele);
+    WebNes::new(data, ele, audio_sample_rate).unwrap()
+  }
+
   pub fn do_frame(&mut self) {
     let frame = self.emulator.frame(&mut self.instance);
     if frame.is_some() {
@@ -76,6 +85,7 @@ impl WebNes {
     }
   }
 }
+
 pub fn create_gl(ele: &str) -> Result<GlWrapper, JsValue> {
   let document = web_sys::window().unwrap().document().unwrap();
   let canvas = document.get_element_by_id(ele);
