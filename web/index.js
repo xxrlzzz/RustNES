@@ -5,29 +5,42 @@ import * as wasm from "./pkg";
 import mario_url from "./assets/mario.nes";
 import State from "./state";
 
-let engine = new RTCEngine();
-engine.init();
-let stream = document.getElementById("canvas").captureStream(30);
-engine.initSender("ws://localhost:8099", stream);
-console.log("engine", engine);
+const canvasEle = document.getElementById("canvas");
+const ctx = canvasEle.getContext("webgl2");
 
-let channel = engine.createDataChannel("input");
+function initRtc(canvasEle, ws_addr) {
+  let engine = new RTCEngine();
+  engine.init();
+  let stream = canvasEle.captureStream(30);
+  engine.initSender(ws_addr, stream);
+  console.log("engine", engine);
+  
+  let channel = engine.createDataChannel("input");
+  
+  channel.onopen = () => {
+    console.log("data channel open");
+  };
+  engine.onDataChannelMessage = (event) => {
+    let keys = event.data.split(",").map((x) => parseInt(x));
+    wasm.update_remote_keyboard_state(keys);
+    console.log("recv", keys);
+  };
+  channel.onclose = () => {
+    console.log("data channel close");
+  };
+  return engine;
+}
 
-channel.onopen = () => {
-  console.log("data channel open");
-};
-engine.onDataChannelMessage = (event) => {
-  let keys = event.data.split(",").map((x) => parseInt(x));
-  wasm.update_remote_keyboard_state(keys);
-  console.log("recv", keys);
-};
-channel.onclose = () => {
-  console.log("data channel close");
-};
+let engine = initRtc(canvasEle, "ws://localhost:8099");
+
 
 let state = new State();
 
-wasm.wasm_main();
+try {
+  wasm.wasm_main();
+} catch (error) {
+  console.error(error);
+}
 fetch(mario_url, {
   headers: {
     "Content-Type": "application/octet-stream",
@@ -38,5 +51,7 @@ fetch(mario_url, {
   })
   .then((array) => {
     let mario = new Uint8Array(array);
-    state.load_rom(mario);
-  });
+    state.load_rom(mario, ctx);
+  }).catch((err) => {
+    console.error(err);
+  }) ;

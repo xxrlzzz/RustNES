@@ -10,3 +10,4 @@ save/
 assets/*.nes
 test.pcm
 
+.DS_Store

@@ -1,4 +1,4 @@
-use js_sys::JsString;
+use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -11,6 +11,10 @@ use crate::render::webgl::GlWrapper;
 #[wasm_bindgen]
 pub fn wasm_main() -> Result<(), JsValue> {
   wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
+  if web_sys::window().is_none() {
+    log::error!("no window");
+    return Err(JsValue::NULL);
+  }
   web_key::keyboard_listen()?;
 
   Ok(())
@@ -18,6 +22,7 @@ pub fn wasm_main() -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub struct WebNes {
+  #[cfg(not(feature = "wasm-miniapp"))]
   gl_wrapper: GlWrapper,
   emulator: Emulator,
   pub audio_sample_rate: f32,
@@ -26,23 +31,42 @@ pub struct WebNes {
 
 #[wasm_bindgen]
 impl WebNes {
+  #[cfg(not(feature = "wasm-miniapp"))]
   pub fn new(
     data: js_sys::Uint8Array,
     ele: JsValue,
     audio_sample_rate: f32,
   ) -> Result<WebNes, JsValue> {
     let data = data.to_vec();
-    let ele = ele.dyn_ref::<JsString>().unwrap().as_string().unwrap();
     // Init data
     let (p1_key, p2_key) = key_binding_parser::default_key_binding();
     let emulator = Emulator::new(2.0, ".".into(), p1_key, p2_key);
 
     let instance = emulator.create_instance_from_data(data.as_slice());
     // Create gl environment.
-    let gl_wrapper = create_gl(ele.as_str())?;
-
+    let ctx = ele.dyn_into::<web_sys::WebGl2RenderingContext>()?;
+    let gl_wrapper = GlWrapper::init_webgl(&ctx)?;
     Ok(WebNes {
       gl_wrapper,
+      emulator,
+      audio_sample_rate,
+      instance,
+    })
+  }
+
+  #[cfg(feature = "wasm-miniapp")]
+  pub fn new(
+    data: js_sys::Uint8Array,
+    audio_sample_rate: f32,
+  ) -> Result<WebNes, JsValue> {
+    let data = data.to_vec();
+    // Init data
+    let (p1_key, p2_key) = key_binding_parser::default_key_binding();
+    let emulator = Emulator::new(2.0, ".".into(), p1_key, p2_key);
+
+    let instance = emulator.create_instance_from_data(data.as_slice());
+    // Create gl environment.
+    Ok(WebNes {
       emulator,
       audio_sample_rate,
       instance,
@@ -54,11 +78,34 @@ impl WebNes {
     let ele = "canvas";
     let audio_sample_rate = 44100.0;
     let data = js_sys::Uint8Array::from(data.as_ref());
-    let ele = JsValue::from_str(ele);
-    WebNes::new(data, ele, audio_sample_rate).unwrap()
+
+    #[cfg(not(feature = "wasm-miniapp"))]
+    {
+      let ele = JsValue::from_str(ele);
+      WebNes::new(data, ele, audio_sample_rate).unwrap()
+    }
+    #[cfg(feature = "wasm-miniapp")]
+    {
+      WebNes::new(data, audio_sample_rate).unwrap()
+    }
   }
 
-  pub fn do_frame(&mut self) {
+  #[cfg(feature = "wasm-miniapp")]
+  pub fn do_frame_and_pull_data(&mut self) -> Result<Uint8Array, JsValue> {
+    if let Some(frame) = self.emulator.frame(&mut self.instance) {
+      unsafe {
+        let array = js_sys::Uint8Array::view(frame.into_vec().as_slice());
+        return Ok(array);
+      }
+    } else {
+      log::debug!("no frame yet");
+      return Ok(Uint8Array::default());
+    }
+
+  }
+
+  #[cfg(not(feature = "wasm-miniapp"))]
+  pub fn do_frame_and_draw(&mut self) {
     let frame = self.emulator.frame(&mut self.instance);
     if frame.is_some() {
       // log::info!("render at {}", instance_id);
@@ -66,6 +113,8 @@ impl WebNes {
       if r.is_err() {
         log::warn!("render error: {:?}", r);
       }
+    } else {
+      log::debug!("no frame yet");
     }
   }
 
@@ -84,19 +133,4 @@ impl WebNes {
       Err(_e) => out.fill(0.0),
     }
   }
-}
-
-pub fn create_gl(ele: &str) -> Result<GlWrapper, JsValue> {
-  let document = web_sys::window().unwrap().document().unwrap();
-  let canvas = document.get_element_by_id(ele);
-  if canvas.is_none() {
-    return Err(JsValue::from_str("Canvas not found"));
-  }
-  let canvas = canvas.unwrap().dyn_into::<web_sys::HtmlCanvasElement>()?;
-
-  let context = canvas
-    .get_context("webgl2")?
-    .unwrap()
-    .dyn_into::<web_sys::WebGl2RenderingContext>()?;
-  Ok(GlWrapper::init_webgl(&context)?)
 }

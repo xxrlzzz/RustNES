@@ -12,10 +12,13 @@ class State {
     this.gain_node = null;
     this.next_start_time = 0;
     this.setup_audio();
+
+    // adjust speed.
+    this.last_frame_time = 0;
   }
 
-  load_rom(rom) {
-    this.nes = wasm.WebNes.new(rom, "canvas", this.sample_rate);
+  load_rom(rom, ctx) {
+    this.nes = wasm.WebNes.new(rom, ctx, this.sample_rate);
     this.run();
   }
 
@@ -30,9 +33,16 @@ class State {
     this.gain_node.gain.setValueAtTime(1, 0);
   }
 
-  run() {
+  run(time) {
+    const old_time = this.last_frame_time;
+    if (time - old_time < 10 && old_time != 0) {
+      this.animation_id = requestAnimationFrame(this.run.bind(this));
+      return;
+    } 
+    this.last_frame_time = time;
+    console.log(time);
     this.animation_id = requestAnimationFrame(this.run.bind(this));
-    this.nes.do_frame();
+    this.nes.do_frame_and_draw();
     this.queue_audio();
   }
 

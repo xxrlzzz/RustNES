@@ -17,12 +17,13 @@ fn main() {
       } else {
         ""
       };
-      let library_dir = dunce::canonicalize(root.join(relative_path)).unwrap();
       println!("cargo:rustc-link-lib=dylib={}", library_name);
-      println!(
-        "cargo:rustc-link-search=native={}",
-        env::join_paths(&[library_dir]).unwrap().to_str().unwrap()
-      );
+      let _ = dunce::canonicalize(root.join(relative_path)).map(|library_dir| {
+        println!(
+          "cargo:rustc-link-search=native={}",
+          env::join_paths(&[library_dir]).unwrap().to_str().unwrap()
+        );
+      });
     }
     Err(_e) => {}
   }

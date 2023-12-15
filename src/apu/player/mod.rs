@@ -78,10 +78,13 @@ impl Player for DummyPlayer {
 
 impl Default for Box<dyn Player> {
   fn default() -> Self {
-    #[cfg(feature = "wasm")]
-    return Box::new(DummyPlayer::new());
+    // #[cfg(feature = "wasm")]
+    // return Box::new(DummyPlayer::new());
 
     #[cfg(feature = "native-audio")]
     return Box::new(portaudio::PortAudioPlayer::new());
+
+    #[cfg(all(not(feature = "native-audio")))]
+    return Box::new(DummyPlayer::new());
   }
 }
