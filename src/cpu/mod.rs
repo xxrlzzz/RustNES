@@ -286,7 +286,9 @@ impl Cpu {
         self.skip_dma_cycles();
       }
     } else {
-      warn!("Unrecognized opcode {:#x}", opcode);
+      if opcode != 0xff {
+        warn!("Unrecognized opcode {:#x}", opcode);
+      }
     }
     self.skip_cycles
   }

@@ -6,6 +6,9 @@ use key_binding_parser::{KeyType, TOTAL_BUTTONS};
 #[cfg(feature = "wasm")]
 pub mod web_key;
 
+#[cfg(feature="wasm-miniapp")]
+pub mod virtual_key;
+
 #[cfg(feature = "use_gl")]
 pub mod gl_key;
 

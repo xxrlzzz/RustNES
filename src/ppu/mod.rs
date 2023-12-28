@@ -310,7 +310,7 @@ impl Ppu {
           continue;
         }
 
-        let spr_y = self.sprite_memory[idx] + 1;
+        let spr_y = self.sprite_memory[idx].overflowing_add(1).0;
         let tile = self.sprite_memory[idx + 1] as u16;
         let attribute = self.sprite_memory[idx + 2];
 

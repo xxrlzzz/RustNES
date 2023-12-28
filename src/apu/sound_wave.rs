@@ -178,12 +178,14 @@ impl Pulse {
   fn sweep(&mut self) {
     let delta = self.timer_period >> self.sweep_shift;
     if self.sweep_negate {
-      self.timer_period -= delta;
+      self.timer_period = self.timer_period.overflowing_sub(delta).0;
+      // self.timer_period -= delta;
       if self.channel == 1 {
-        self.timer_period -= 1;
+        self.timer_period = self.timer_period.overflowing_sub(1).0;
       }
     } else {
-      self.timer_period += delta;
+      self.timer_period = self.timer_period.overflowing_add(delta).0;
+      // self.timer_period += delta;
     }
   }
 

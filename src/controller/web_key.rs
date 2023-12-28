@@ -13,6 +13,7 @@ pub enum WebEvent {
   KeyDown(KeyType),
   Focus(bool),
 }
+
 lazy_static! {
   pub static ref KEYBOARD_STATE: Mutex<HashSet<KeyType>> = Mutex::new(HashSet::<KeyType>::new());
   pub static ref KEYBOARD_EVENTS: Mutex<Vec<WebEvent>> = Mutex::new(Vec::<WebEvent>::new());
@@ -90,6 +91,7 @@ pub fn keyboard_listen() -> Result<(), JsValue> {
   Ok(())
 }
 
+#[cfg(not(feature = "wasm-miniapp"))]
 impl Controller {
   pub(crate) fn update_keys(&mut self) {
     let keyboard_state = if self.enable_remote {

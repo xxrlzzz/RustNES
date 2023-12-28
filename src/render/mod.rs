@@ -3,7 +3,7 @@ pub mod gl;
 #[cfg(feature = "use_gl")]
 pub mod glfw_window;
 
-#[cfg(feature = "wasm")]
+#[cfg(all(feature = "wasm", not(feature = "wasm-miniapp")))]
 pub mod webgl;
 
 #[cfg(any(feature = "use_gl", feature = "wasm"))]
