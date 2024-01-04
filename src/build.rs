@@ -4,6 +4,7 @@ fn main() {
   let library_name = "SDL2";
   let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   // Link SDL2 for android.
+  #[cfg(target_os = "android")]
   match env::var("TARGET") {
     Ok(target) => {
       let relative_path = if target.contains("armv7") {
