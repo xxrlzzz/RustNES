@@ -6,8 +6,7 @@ use crate::cartridge::Cartridge;
 use crate::common::*;
 use crate::mapper::Mapper;
 
-use super::factory::CNROM;
-use super::save;
+use super::{save, UXROM};
 
 #[derive(Serialize, Deserialize)]
 pub struct UxRom {
@@ -75,7 +74,7 @@ impl Mapper for UxRom {
   }
 
   fn mapper_type(&self) -> u8 {
-    CNROM
+    UXROM
   }
 }
 

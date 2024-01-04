@@ -44,4 +44,4 @@ Note due to the performance issue, you should run in release mode to get enough 
 - [ ] Test more nes games and upload result.
 - [ ] Dynamic load rom.
 - [ ] Fix sound effect issue. 
-- [ ] Web support(audio, controller)
+- [x] Web support(audio, controller)

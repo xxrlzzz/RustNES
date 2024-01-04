@@ -4,6 +4,7 @@ use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, rc::Rc};
 
@@ -11,9 +12,12 @@ use crate::apu::Apu;
 use crate::common::*;
 use crate::controller::key_binding_parser::KeyType;
 use crate::controller::Controller;
+use crate::cpu::InterruptType;
 use crate::mapper::factory::load_mapper;
 use crate::mapper::Mapper;
 use crate::ppu::Ppu;
+
+use super::message_bus::Message;
 
 pub type IORegister = u16;
 
@@ -83,6 +87,7 @@ impl MainBus {
 
   pub fn load_binary(
     mut reader: BufReader<File>,
+    message_sx: Sender<Message>,
     ppu: Arc<Mutex<Ppu>>,
     apu: Arc<Mutex<Apu>>,
   ) -> Self {
@@ -104,6 +109,11 @@ impl MainBus {
         }
         r.unwrap().update_mirroring(Some(val));
       }),
+      Box::new(move || {
+        if let Err(e) = message_sx.send(Message::CpuInterrupt(InterruptType::IRQ)) {
+          log::error!("send interrupt error {:?}", e);
+        }
+      })
     );
     ppu.lock().unwrap().set_mapper_for_bus(mapper.clone());
     Self {
@@ -138,60 +148,65 @@ impl MainBus {
   }
 
   pub fn write(&mut self, addr: Address, value: Byte) {
-    if addr < 0x2000 {
-      self.ram[(addr & 0x07ff) as usize] = value;
-    } else if addr < 0x4020 {
-      let mapped_addr = if addr < 0x4000 {
-        // PPU registers, mirrored
-        addr & PPU_DATA
-      } else {
-        addr
-      };
-      match mapped_addr {
-        JOY1 => {
-          self.control1.strobe(value);
-          self.control2.strobe(value);
-        }
-        OAM_DMA => {
-          self.skip_dma_cycles = true;
-          unsafe {
-            let ptr = self.get_page_ptr(value);
-            if let Some(ptr) = ptr {
-              for reg in &mut self.registers {
-                if reg.lock().unwrap().dma(ptr) {
-                  break;
+    match addr {
+      0x0000..=0x1fff => {
+        self.ram[(addr & 0x07ff) as usize] = value;
+      }
+      0x2000..=0x401f => {
+        let mapped_addr = if addr < 0x4000 {
+          // PPU registers, mirrored
+          addr & PPU_DATA
+        } else {
+          addr
+        };
+        match mapped_addr {
+          JOY1 => {
+            self.control1.strobe(value);
+            self.control2.strobe(value);
+          }
+          OAM_DMA => {
+            self.skip_dma_cycles = true;
+            unsafe {
+              let ptr = self.get_page_ptr(value);
+              if let Some(ptr) = ptr {
+                for reg in &mut self.registers {
+                  if reg.lock().unwrap().dma(ptr) {
+                    break;
+                  }
                 }
               }
             }
           }
-        }
-        _ => {
-          for reg in &mut self.registers {
-            if reg.lock().unwrap().write(mapped_addr, value) {
-              break;
+          _ => {
+            for reg in &mut self.registers {
+              if reg.lock().unwrap().write(mapped_addr, value) {
+                break;
+              }
             }
           }
         }
       }
-    } else if addr < 0x6000 {
-      self
-        .mapper
-        .as_ref()
-        .unwrap()
-        .borrow_mut()
-        .write_prg(addr, value);
-      // warn!("Expansion ROM write attempted. This currently unsupported");
-    } else if addr < 0x8000 {
-      if self.has_ext_ram {
-        self.ext_ram[(addr - 0x6000) as usize] = value;
+      0x4020..=0x5fff => {
+        // self
+        //   .mapper
+        //   .as_ref()
+        //   .unwrap()
+        //   .borrow_mut()
+        //   .write_prg(addr, value);
       }
-    } else {
-      self
-        .mapper
-        .as_ref()
-        .unwrap()
-        .borrow_mut()
-        .write_prg(addr, value);
+      0x6000..=0x7fff => {
+        if self.has_ext_ram {
+          self.ext_ram[(addr - 0x6000) as usize] = value;
+        }
+      }
+      0x8000..=0xffff => {
+        self
+          .mapper
+          .as_ref()
+          .unwrap()
+          .borrow_mut()
+          .write_prg(addr, value);
+      }
     }
   }
 

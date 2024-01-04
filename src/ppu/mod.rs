@@ -201,6 +201,10 @@ impl Ppu {
       self.cycle = 0;
       self.scanline = 0;
     }
+
+    if self.cycle == 260 && self.show_background && self.show_sprites {
+      self.bus.scanline_irq();
+    }
   }
 
   fn render(&mut self) {
@@ -217,6 +221,11 @@ impl Ppu {
         self.data_address |= self.temp_address & 0x041F;
       }
     }
+
+    if self.cycle == 260 && self.show_background && self.show_sprites {
+      self.bus.scanline_irq();
+    }
+
     if self.cycle >= SCANLINE_END_CYCLE {
       // Find and index sprites that are on the next Scanline
       // This isn't where/when this indexing, actually copying in 2C02 is done
@@ -332,7 +341,8 @@ impl Ppu {
         if !self.long_sprites {
           addr = ((tile as i32) * 16 + y_offset) as u16;
           if let CharacterPage::High = self.sprite_page {
-            addr += 0x1000;
+            // addr += 0x1000;
+            addr = addr.overflowing_add(0x1000).0;
           }
         } else {
           // 8 * 16 sprites
@@ -371,7 +381,9 @@ impl Ppu {
     } else {
       0
     };
-    let color = palette_colors::COLORS[bus.read_palette(palette_addr) as usize];
+    let idx = std::cmp::min(bus.read_palette(palette_addr) as usize, 63);
+    let color = palette_colors::COLORS[idx];
+    // let color = palette_colors::COLORS[bus.read_palette(palette_addr) as usize];
     unsafe { self.image.unsafe_put_pixel(x as u32, y as u32, color) }
   }
 

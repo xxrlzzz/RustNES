@@ -5,8 +5,7 @@ use crate::cartridge::{Cartridge, BANK_SIZE};
 use crate::common::*;
 use crate::mapper::Mapper;
 
-use super::factory::NROM;
-use super::save;
+use super::{NROM, save};
 
 #[derive(Serialize, Deserialize)]
 pub struct NRom {

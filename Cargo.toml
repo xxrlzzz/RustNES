@@ -79,7 +79,7 @@ path = "src/main.rs"
 getrandom = { version = "0.2.8", features = ["js"] }
 
 [features]
-default = ["wasm"]
+default = ["use_sdl2"]
 use_gl = ["gl", "glfw"]
 native-audio = ["portaudio"]
 android = ["android_logger", "jni"]

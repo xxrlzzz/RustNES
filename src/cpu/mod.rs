@@ -335,11 +335,11 @@ impl Cpu {
         self.set_zn(self.r_a);
       }
       operation_implied::DEX => {
-        self.r_x = self.r_x.overflowing_sub(1).0;
+        self.r_x = self.r_x.wrapping_sub(1);
         self.set_zn(self.r_x);
       }
       operation_implied::DEY => {
-        self.r_y = self.r_y.overflowing_sub(1).0;
+        self.r_y = self.r_y.wrapping_sub(1);
         self.set_zn(self.r_y);
       }
       operation_implied::TAY => {
@@ -366,11 +366,11 @@ impl Cpu {
         self.set_zn(self.r_x);
       }
       operation_implied::INX => {
-        self.r_x = self.r_x.overflowing_add(1).0;
+        self.r_x = self.r_x.wrapping_add(1);
         self.set_zn(self.r_x);
       }
       operation_implied::INY => {
-        self.r_y = self.r_y.overflowing_add(1).0;
+        self.r_y = self.r_y.wrapping_add(1);
         self.set_zn(self.r_y);
       }
       operation_implied::CLC => self.flag.set_at(flag_const::CARRY, false),
@@ -470,10 +470,8 @@ impl Cpu {
           let operand = operand as Address;
           // High carry means "no borrow", thus negate and subtract
           let diff = (r_a)
-            .overflowing_sub(operand)
-            .0
-            .overflowing_sub(!self.flag.get_at(flag_const::CARRY) as Address)
-            .0;
+            .wrapping_sub(operand)
+            .wrapping_sub(!self.flag.get_at(flag_const::CARRY) as Address);
           // If the ninth bit is 1, the resulting number is negative =>
           // borrow => low carry
           self.flag.set_at(flag_const::CARRY, !bit_eq(diff, 0x100));
@@ -531,7 +529,7 @@ impl Cpu {
       }
       operation2::DEC => {
         let r = {
-          let r = self.main_bus.read(location).overflowing_sub(1).0;
+          let r = self.main_bus.read(location).wrapping_sub(1);
           self.main_bus.write(location, r);
           r
         };
@@ -539,7 +537,7 @@ impl Cpu {
       }
       operation2::INC => {
         let r = {
-          let r = self.main_bus.read(location).overflowing_add(1).0;
+          let r = self.main_bus.read(location).wrapping_add(1);
           self.main_bus.write(location, r);
           r
         };

@@ -10,7 +10,7 @@ use crate::mapper::Mapper;
 mod name_table_mirroring {
   pub const HORIZONTAL: u8 = 0;
   pub const VERTICAL: u8 = 1;
-  // pub const FOUR_SCREEN: u8 = 8;
+  pub const FOUR_SCREEN: u8 = 8;
   pub const ONE_SCREEN_LOWER: u8 = 9;
   pub const ONE_SCREEN_HIGHER: u8 = 10;
 }
@@ -149,6 +149,9 @@ impl PictureBus {
         self.name_table3 = 0x400;
         info!("Single Screen mirroring set with higher bank.");
       }
+      name_table_mirroring::FOUR_SCREEN => {
+        self.name_table0 = self.ram.len();
+      }
       _ => {
         self.name_table0 = 0;
         self.name_table1 = 0;
@@ -157,5 +160,9 @@ impl PictureBus {
         info!("Unsupported name table mirroring was set {}", mirror);
       }
     }
+  }
+
+  pub fn scanline_irq(&mut self) {
+    self.mapper.as_mut().unwrap().borrow_mut().scanline_irq()
   }
 }

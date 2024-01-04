@@ -6,18 +6,15 @@ use crate::common::Byte;
 use crate::mapper::cn_rom::CnRom;
 use crate::mapper::n_rom::NRom;
 use crate::mapper::ux_rom::UxRom;
+use crate::mapper::sx_rom::SxRom;
+use crate::mapper::tx_rom::TxRom;
 use crate::mapper::Mapper;
 use std::{cell::RefCell, rc::Rc};
 
-use super::sx_rom::SxRom;
-
-type MapperType = u8;
-pub(crate) const NROM: MapperType = 0;
-pub(crate) const SXROM: MapperType = 1;
-pub(crate) const UXROM: MapperType = 2;
-pub(crate) const CNROM: MapperType = 3;
+use super::{NROM, SXROM, UXROM, CNROM, TXROM};
 
 pub type MirrorCallback = Box<dyn FnMut(u8) -> ()>;
+pub type IRQCallback = Box<dyn FnMut() -> ()>;
 
 #[derive(
   Default, Debug, Clone, Copy, IntoPrimitive, FromPrimitive, PartialEq, Serialize, Deserialize,
@@ -35,6 +32,7 @@ pub enum NameTableMirroring {
 pub fn create_mapper<'a>(
   cartridge: Cartridge,
   mirror_cb: MirrorCallback,
+  irq_cb: IRQCallback,
 ) -> Rc<RefCell<dyn Mapper + 'a>> {
   let mapper_type = cartridge.get_mapper();
   match mapper_type {
@@ -42,6 +40,7 @@ pub fn create_mapper<'a>(
     SXROM => Rc::new(RefCell::new(SxRom::new(cartridge, mirror_cb))),
     UXROM => Rc::new(RefCell::new(UxRom::new(cartridge))),
     CNROM => Rc::new(RefCell::new(CnRom::new(cartridge))),
+    TXROM => Rc::new(RefCell::new(TxRom::new(cartridge, mirror_cb, irq_cb))),
     _ => {
       panic!("invalid mapper type received {}", mapper_type);
     }
@@ -52,6 +51,7 @@ pub fn load_mapper<'a>(
   mapper_type: Byte,
   serialized: &str,
   mirror_cb: MirrorCallback,
+  irq_cb: IRQCallback,
 ) -> Rc<RefCell<dyn Mapper + 'a>> {
   match mapper_type {
     NROM => {
@@ -69,6 +69,13 @@ pub fn load_mapper<'a>(
     }
     CNROM => {
       let mapper_typed: CnRom = serde_json::from_str(serialized).unwrap();
+      Rc::new(RefCell::new(mapper_typed))
+    }
+    // TODO TxRom
+    TXROM => {
+      let mut mapper_typed: TxRom = serde_json::from_str(serialized).unwrap();
+      mapper_typed.set_mirror_cb(mirror_cb);
+      mapper_typed.set_irq_cb(irq_cb);
       Rc::new(RefCell::new(mapper_typed))
     }
     _ => {

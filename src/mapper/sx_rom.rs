@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use crate::common::{bit_eq, Byte};
 use crate::{cartridge::Cartridge, common::Address};
 
-use super::factory::SXROM;
-use super::save;
+use super::{SXROM, save};
+
 use super::{
   factory::{MirrorCallback, NameTableMirroring},
   Mapper,
@@ -19,7 +19,7 @@ pub struct SxRom {
   cart: Cartridge,
   #[serde(skip)]
   mirror_cb: Option<MirrorCallback>,
-  name_table_mirroring: NameTableMirroring,
+  mirroring: NameTableMirroring,
 
   mode_chr: Byte,
   mode_prg: Byte,
@@ -50,7 +50,7 @@ impl SxRom {
       character_ram: ram,
       cart,
       mirror_cb: Some(mirror_cb),
-      name_table_mirroring: NameTableMirroring::Horizontal,
+      mirroring: NameTableMirroring::Horizontal,
       mode_chr: 0,
       mode_prg: 3,
       temp_register: 0,
@@ -100,14 +100,14 @@ impl Mapper for SxRom {
       if self.write_counter == 5 {
         if addr <= 0x9fff {
           match self.temp_register & 0x3 {
-            0 => self.name_table_mirroring = NameTableMirroring::OneScreenLower,
-            1 => self.name_table_mirroring = NameTableMirroring::OneScreenHigher,
-            2 => self.name_table_mirroring = NameTableMirroring::Vertical,
-            3 => self.name_table_mirroring = NameTableMirroring::Horizontal,
+            0 => self.mirroring = NameTableMirroring::OneScreenLower,
+            1 => self.mirroring = NameTableMirroring::OneScreenHigher,
+            2 => self.mirroring = NameTableMirroring::Vertical,
+            3 => self.mirroring = NameTableMirroring::Horizontal,
             _ => unreachable!(),
           }
           if self.mirror_cb.is_some() {
-            self.mirror_cb.as_mut().unwrap()(self.name_table_mirroring.into());
+            self.mirror_cb.as_mut().unwrap()(self.mirroring.into());
           }
 
           self.mode_chr = (self.temp_register & 0x10) >> 4;
@@ -190,7 +190,7 @@ impl Mapper for SxRom {
   }
 
   fn get_name_table_mirroring(&self) -> u8 {
-    self.name_table_mirroring.into()
+    self.mirroring.into()
   }
 
   fn save(&self) -> String {

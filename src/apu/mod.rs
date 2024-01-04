@@ -19,7 +19,7 @@ use crate::{
     message_bus::Message,
   },
   common::*,
-  NesResult,
+  NesResult, cpu::InterruptType,
 };
 
 use self::{
@@ -267,7 +267,7 @@ impl Apu {
         .message_sx
         .as_ref()
         .unwrap()
-        .send(Message::CpuInterrupt(crate::cpu::InterruptType::IRQ))
+        .send(Message::CpuInterrupt(InterruptType::IRQ))
       {
         log::error!("failed to send irq message: {:?}", e);
       }

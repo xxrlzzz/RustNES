@@ -5,8 +5,7 @@ use crate::cartridge::{Cartridge, BANK_SIZE};
 use crate::common::*;
 use crate::mapper::Mapper;
 
-use super::factory::CNROM;
-use super::save;
+use super::{CNROM, save};
 
 #[derive(Serialize, Deserialize)]
 pub struct CnRom {
@@ -64,5 +63,3 @@ impl Mapper for CnRom {
   }
 }
 
-unsafe impl Sync for CnRom {}
-unsafe impl Send for CnRom {}

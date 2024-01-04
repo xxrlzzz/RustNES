@@ -15,7 +15,7 @@ use crate::{
   bus::{main_bus::MainBus, message_bus::Message},
   cartridge::Cartridge,
   common::instant::Instant,
-  cpu::Cpu,
+  cpu::{Cpu, InterruptType},
   emulator::RuntimeConfig,
   mapper::factory,
   ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES},
@@ -219,13 +219,13 @@ impl Instance {
       .unwrap();
     let ppu = from_reader(&mut reader)
       .map(|mut ppu: Ppu| {
-        ppu.set_message_bus(message_sx);
+        ppu.set_message_bus(message_sx.clone());
         ppu.image = RgbaImage::new(SCANLINE_VISIBLE_DOTS as u32, VISIBLE_SCANLINES as u32);
 
         Arc::new(Mutex::new(ppu))
       })
       .unwrap();
-    let mut main_bus = MainBus::load_binary(reader, ppu.clone(), apu.clone());
+    let mut main_bus = MainBus::load_binary(reader, message_sx, ppu.clone(), apu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
     cpu.set_main_bus(main_bus);
     let cpu = Arc::new(Mutex::new(cpu));
@@ -243,7 +243,7 @@ impl Instance {
     let (message_sx, message_rx) = mpsc::channel::<Message>();
     let ppu = Arc::new(Mutex::new(Ppu::new(message_sx.clone())));
 
-    let apu = Arc::new(Mutex::new(Apu::new(message_sx)));
+    let apu = Arc::new(Mutex::new(Apu::new(message_sx.clone())));
     let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
 
@@ -259,6 +259,11 @@ impl Instance {
           warn!("ppu is locked");
         }
       }),
+      Box::new(move || {
+        if let Err(e) = message_sx.send(Message::CpuInterrupt(InterruptType::IRQ)) {
+          log::error!("send interrupt error {:?}", e);
+        }
+      })
     );
     cpu.main_bus_mut().set_mapper(mapper.clone());
     cpu.reset();
