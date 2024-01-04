@@ -80,7 +80,7 @@ android_logger = { version = "0.11.0" }
 jni = { version = "0.19.0", default-features = false }
 
 [features]
-default = ["use_sdl2"]
+default = ["use_gl"]
 use_gl = ["gl", "glfw"]
 native-audio = ["portaudio"]
 wasm = []
