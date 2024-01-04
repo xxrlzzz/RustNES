@@ -26,7 +26,7 @@ struct Args {
 #[no_mangle]
 pub extern "C" fn android_main(argc: std::os::raw::c_int, argv: *const *const u8) {
   android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Trace));
-  let mario = include_bytes!("../assets/mario.nes");
+  let mario = include_bytes!("../../assets/mario.nes");
 
   info!("enter android_main");
   let (p1_key, p2_key) = controller::key_binding_parser::default_key_binding();

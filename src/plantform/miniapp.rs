@@ -6,6 +6,7 @@ use crate::emulator::Emulator;
 
 use super::wasm::WebNes;
 
+#[wasm_bindgen]
 impl WebNes {
   pub fn new(
     data: js_sys::Uint8Array,

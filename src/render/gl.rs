@@ -149,14 +149,14 @@ pub(crate) unsafe fn set_texture(buf: image::RgbaImage) {
   )
 }
 
-pub(crate) unsafe fn draw_frame(shader: u32, VAO: u32, texture: u32) {
+pub(crate) unsafe fn draw_frame(shader: u32, vao: u32, texture: u32) {
   gl::Clear(gl::COLOR_BUFFER_BIT);
 
   gl::ActiveTexture(gl::TEXTURE0);
   gl::BindTexture(gl::TEXTURE_2D, texture);
   // draw our first triangle
   gl::UseProgram(shader);
-  gl::BindVertexArray(VAO);
+  gl::BindVertexArray(vao);
   gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
 }
 

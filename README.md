@@ -21,6 +21,7 @@ Note due to the performance issue, you should run in release mode to get enough 
 - Desktop(Mac)
 - Android
 - Web(Wasm + WebGL)
+- Miniapp(same with web, but render on js rather than rust js binding)
 
 
 ## Screenshots
@@ -33,6 +34,9 @@ Note due to the performance issue, you should run in release mode to get enough 
 
 - integration with streaming and co-play
 ![stream](./img/stream_integration.png)
+
+- miniapp  
+![miniapp](./img/miniapp.jpg)
 
 ## TODO
 

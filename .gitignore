@@ -11,3 +11,6 @@ assets/*.nes
 test.pcm
 
 .DS_Store
+
+pkg/
+pkg_miniapp/

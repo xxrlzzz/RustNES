@@ -6,7 +6,7 @@ mod sdl2;
 #[cfg(feature = "use_gl")]
 mod gl;
 
-#[cfg(feature = "wasm")]
+#[cfg(target_arch = "wasm32")]
 mod web;
 
 use std::time::Duration;

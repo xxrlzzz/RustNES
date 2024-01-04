@@ -1,10 +1,10 @@
 use std::thread;
-use std::time::Instant;
 
 use log::{error, info};
 
 use super::{Emulator, RuntimeConfig};
 
+use crate::common::instant::Instant;
 use crate::emulator::FRAME_DURATION;
 use crate::instance::Instance;
 
@@ -14,7 +14,7 @@ impl Emulator {
 
     use glfw::Context;
 
-    use crate::render::{gl_helper, glfw_window};
+    use crate::render::{gl, glfw_window};
 
     // let mut instance = self.create_instance(rom_path);
 
@@ -31,9 +31,9 @@ impl Emulator {
     }
 
     #[allow(non_snake_case)]
-    let (shader, VAO) = unsafe { (gl_helper::compile_shader(), gl_helper::create_vao()) };
+    let (shader, VAO) = unsafe { (gl::compile_shader(), gl::create_vao()) };
 
-    let texture = unsafe { gl_helper::create_texture(shader) };
+    let texture = unsafe { gl::create_texture(shader) };
 
     // Loop until the user closes the window
     while !window.borrow().should_close() {
@@ -47,16 +47,13 @@ impl Emulator {
           break;
         }
       }
-      let mut rgba = instance.take_rgba();
-      if rgba.is_some() {
+      if let Some(rgba) = instance.take_rgba() {
         unsafe {
-          gl_helper::set_texture(rgba.take().unwrap());
+          gl::set_texture(rgba);
+          gl::draw_frame(shader, VAO, texture);
         }
       }
 
-      unsafe {
-        gl_helper::draw_frame(shader, VAO, texture);
-      }
       if instance.can_run() {
         instance.update_timer();
         let cost = self.one_frame(&mut instance);
@@ -69,6 +66,7 @@ impl Emulator {
     }
     instance.stop();
   }
+
   fn handle_event(
     &mut self,
     runtime_config: &RuntimeConfig,
