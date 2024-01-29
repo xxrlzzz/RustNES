@@ -1,0 +1,13 @@
+[package]
+name = "rust-emu-common"
+version = "0.1.0"
+authors = ["xxrl <837951112@qq.com>"]
+
+
+# for web
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = { version = "0.2.74" }
+
+[dependencies]
+image = { version = "0.23.12", features = ["rgb"] }
+log = { version = "0.4", features = ["std"] }
