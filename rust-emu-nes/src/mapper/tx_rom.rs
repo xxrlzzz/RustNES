@@ -2,11 +2,12 @@ use crate::cartridge::NESCartridge;
 
 use super::{
   factory::{IRQCallback, MirrorCallback, NameTableMirroring},
-  Mapper, TXROM,
+  TXROM,
 };
 use serde::{Deserialize, Serialize};
 
 use rust_emu_common::{component::cartridge::Cartridge, types::*};
+use rust_emu_common::mapper::{Mapper, save};
 
 /**
  * MMC3 mapper
@@ -226,7 +227,7 @@ impl Mapper for TxRom {
   }
 
   fn save(&self) -> String {
-    super::save(self)
+    save(self)
   }
 
   fn mapper_type(&self) -> u8 {

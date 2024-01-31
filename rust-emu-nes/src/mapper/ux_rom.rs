@@ -1,11 +1,11 @@
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::vec::Vec;
+use rust_emu_common::mapper::{Mapper, save};
 
 use crate::cartridge::NESCartridge;
-use crate::mapper::Mapper;
 
-use super::{save, UXROM};
+use super::UXROM;
 
 use rust_emu_common::{component::cartridge::Cartridge, types::*};
 

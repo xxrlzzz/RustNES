@@ -24,6 +24,10 @@ impl From<u8> for RunningStatus {
   }
 }
 impl RunningStatus {
+  pub fn toggle_pause(&mut self) {
+    *self = Self::from(*self as u8 ^ Self::Pause as u8)
+  }
+
   pub fn unpause(&mut self) {
     *self = Self::from(*self as u8 & Self::LostFocus as u8)
   }

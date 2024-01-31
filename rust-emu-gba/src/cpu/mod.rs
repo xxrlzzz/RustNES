@@ -1,10 +1,17 @@
 use rust_emu_common::types::*;
+use serde::{Deserialize, Serialize};
 
 mod gb_opcodes;
 
 use gb_opcodes::Instruction;
 
-use self::gb_opcodes::{AddrMode, CondType, InstructionType, RegType};
+use crate::bus::MainBus;
+
+use self::{
+  flag_const::{CARRY, HALF_CARRY, SUBTRACTION},
+  gb_opcodes::{AddrMode, CondType, InstructionType, RegType},
+  int_const::{INT_JOYPAD, INT_LCD, INT_SERIAL, INT_TIMER, INT_VBLANK},
+};
 
 mod flag_const {
   use rust_emu_common::types::*;
@@ -18,6 +25,16 @@ mod flag_const {
   pub const ALL: Byte = 0xff;
 }
 
+mod int_const {
+  use rust_emu_common::types::*;
+  pub const INT_VBLANK: Byte = 1 << 0;
+  pub const INT_LCD: Byte = 1 << 1;
+  pub const INT_TIMER: Byte = 1 << 2;
+  pub const INT_SERIAL: Byte = 1 << 3;
+  pub const INT_JOYPAD: Byte = 1 << 4;
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct GBCpu {
   skip_cycles: u32,
   cycles: u32,
@@ -43,20 +60,135 @@ pub struct GBCpu {
   dist_in_mem: bool,
 
   int_master_enabled: bool,
+  int_flags: Byte,
+  ie_register: Byte,
+  enable_ime: bool,
+
+  halt: bool,
+
+  #[serde(skip)]
+  main_bus: MainBus,
 }
 
 impl GBCpu {
+  pub fn new(main_bus: MainBus) -> Self {
+    Self {
+        skip_cycles: 0,
+        cycles: 0,
+        r_pc: 0x100,
+        r_sp: 0xFFFE,
+        r_a: 0xB0,
+        r_f: 0x01,
+        r_b: 0x13,
+        r_c: 0x00,
+        r_d: 0xD8,
+        r_e: 0x00,
+        r_h: 0x4D,
+        r_l: 0x01,
+        cur_op: 0,
+        cur_inst: Instruction::default(),
+        fetched_data: 0,
+        mem_dis: 0,
+        dist_in_mem: false,
+        int_master_enabled: false,
+        int_flags: 0,
+        ie_register: 0,
+        enable_ime: false,
+        halt: false,
+        main_bus,
+    }
+  }
+
+  pub fn set_main_bus(&mut self, main_bus: MainBus) {
+    self.main_bus = main_bus;
+  }
+
+  pub fn main_bus(&self) -> &MainBus {
+    &self.main_bus
+  }
+
+  pub fn main_bus_mut(&mut self) -> &mut MainBus {
+    &mut self.main_bus
+  }
+
+  pub fn reset(&mut self) {
+    self.skip_cycles = 0;
+    self.cycles = 0;
+    self.r_pc = 0x100;
+    self.r_sp = 0xFFFE;
+    self.r_a = 0xB0;
+    self.r_f =0x01;
+    self.r_b = 0x13;
+    self.r_c = 0x00;
+    self.r_d = 0xD8;
+    self.r_e = 0x00;
+    self.r_h = 0x4D;
+    self.r_l = 0x01;
+    self.cur_op = 0;
+    self.cur_inst = Instruction::default();
+    self.fetched_data = 0;
+    self.mem_dis = 0;
+    self.dist_in_mem = false;
+    self.int_master_enabled = false;
+    self.int_flags = 0;
+    self.ie_register = 0;
+    self.enable_ime = false;
+    self.halt = false;
+  }
+}
+
+impl GBCpu {
+
+
+  #[allow(dead_code)]
   pub fn step(&mut self) -> u32 {
     self.cycles += 1;
     if self.skip_cycles > 0 {
       return self.skip_cycles;
     }
     // handle interrupt
+    if self.halt {
+      if self.int_flags != 0 {
+        self.halt = false;
+      }
+    } else {
+      let mut inst = self.fetch_instruction();
+      if let Some(data) = self.fetch_data(&inst) {
+        inst.param = data;
+      }
+      // debug print
+      self.execute(inst);
+    }
 
-    let inst = self.fetch_instruction();
-    let data = self.fetch_data(&inst);
-    self.execute(inst);
+    if self.int_master_enabled {
+      self.handle_interrupts();
+      self.enable_ime = false;
+    }
+
+    if self.enable_ime {
+      self.int_master_enabled = true;
+    }
     return self.skip_cycles;
+  }
+
+  fn check_interrupt(&mut self, addr: Byte, int_flag: Byte) -> bool {
+    if bit_eq(self.int_flags, int_flag) || bit_eq(self.ie_register, int_flag) {
+      self.push_stack_16(self.r_pc);
+      self.r_pc = addr as Address;
+
+      self.halt = false;
+      self.int_master_enabled = false;
+      return true;
+    }
+    false
+  }
+
+  fn handle_interrupts(&mut self) {
+    let _ = self.check_interrupt(0x40, INT_VBLANK)
+      || self.check_interrupt(0x48, INT_LCD)
+      || self.check_interrupt(0x50, INT_TIMER)
+      || self.check_interrupt(0x58, INT_SERIAL)
+      || self.check_interrupt(0x60, INT_JOYPAD);
   }
 
   fn fetch_instruction(&mut self) -> Instruction {
@@ -181,8 +313,305 @@ impl GBCpu {
   fn execute(&mut self, inst: Instruction) {
     match inst.i_type {
       InstructionType::LD => self.inst_ld(inst),
+      InstructionType::LDH => self.inst_ldh(inst),
+      InstructionType::JP => self.inst_jp(inst),
+      InstructionType::JR => self.inst_jr(inst),
+      InstructionType::CALL => self.inst_call(inst),
+      InstructionType::RST => self.inst_rst(inst),
+      InstructionType::RET => self.inst_ret(inst),
+      InstructionType::RETI => self.inst_reti(inst),
+      InstructionType::POP => self.inst_pop(inst),
+      InstructionType::PUSH => self.inst_push(inst),
+      InstructionType::INC => self.inst_inc(inst),
+      InstructionType::DEC => self.inst_dec(inst),
+      InstructionType::SUB => self.inst_sub(inst),
+      InstructionType::SBC => self.inst_sbc(inst),
+      InstructionType::ADC => self.inst_adc(inst),
+      InstructionType::ADD => self.inst_add(inst),
+      InstructionType::DAA => self.inst_daa(),
+      InstructionType::CPL => self.inst_cpl(),
+      InstructionType::SCF => self.inst_scf(),
+      InstructionType::CCF => self.inst_ccf(),
+      InstructionType::HALT => self.inst_halt(),
+      InstructionType::RRA => self.inst_rra(),
+      InstructionType::AND => self.inst_and(inst),
+      InstructionType::XOR => self.inst_xor(inst),
+      InstructionType::OR => self.inst_or(inst),
+      InstructionType::CP => self.inst_cp(inst),
+      InstructionType::DI => {self.int_master_enabled = true;},
+      InstructionType::EI => {self.enable_ime = true;},
+      InstructionType::STOP => self.inst_stop(),
+      InstructionType::RLA => self.inst_rla(),
+      InstructionType::RRCA => self.inst_rrca(),
+      InstructionType::RLCA => self.inst_rlca(),
+      InstructionType::CB => self.inst_cb(inst),
+      InstructionType::NOP => {}
+      InstructionType::RLC
+      | InstructionType::RRC
+      | InstructionType::RL
+      | InstructionType::RR
+      | InstructionType::SLA
+      | InstructionType::SRA
+      | InstructionType::SWAP
+      | InstructionType::SRL
+      | InstructionType::BIT
+      | InstructionType::RES
+      | InstructionType::SET => {
+        log::error!("invalid instruction cb")
+      }
+      InstructionType::JPHL => {
+        log::error!("no impl instruction error")
+      }
+      InstructionType::ERR => {
+        log::error!("no impl instruction error")
+      }
+      InstructionType::NONE => {
+        log::error!("invalid instruction")
+      }
+    }
+  }
+
+  fn inst_cb(&mut self, inst: Instruction) {
+    let op = inst.param;
+    let reg = match op & 0x7 {
+      0x0 => RegType::B,
+      0x1 => RegType::C,
+      0x2 => RegType::D,
+      0x3 => RegType::E,
+      0x4 => RegType::H,
+      0x5 => RegType::L,
+      0x6 => RegType::HL,
+      0x7 => RegType::A,
+      _ => RegType::NONE,
+    };
+    let bit = (op >> 3) & 0x7;
+    let bit_op = (op >> 6) & 0x3;
+    let is_hl = reg == RegType::HL;
+    let mut reg_val = if is_hl {
+      self.read_bus(self.read_reg(reg))
+    } else {
+      self.read_reg(reg) as Byte
+    };
+
+    match bit_op {
+      0x1 => {
+        // BIT
+        self.set_flags(
+          Some(reg_val & (1 << bit) == 0),
+          Some(false),
+          Some(true),
+          None,
+        );
+        return;
+      }
+      0x2 => {
+        // RST
+        reg_val &= !(1 << bit);
+        self.set_reg8(reg, reg_val);
+        return;
+      }
+      0x3 => {
+        // SET
+        reg_val |= 1 << bit;
+        self.set_reg8(reg, reg_val);
+        return;
+      }
       _ => {}
     }
+
+    let fc = self.check_flag(CARRY);
+
+    match fc {
+      0 => {
+        // RLC
+        let (result, c) = if bit_eq(reg_val, 0x80) {
+          ((reg_val << 1) & 0xFF | 1, true)
+        } else {
+          (reg_val << 1 & 0xFF, false)
+        };
+        self.set_reg8(reg, result);
+        self.set_flags(Some(result == 0), Some(false), Some(false), Some(c));
+      }
+      1 => {
+        // RRC
+        let old = reg_val;
+        reg_val = reg_val >> 1 | old << 7;
+        self.set_reg8(reg, reg_val);
+        self.set_flags(
+          Some(reg_val != 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(old, 1)),
+        )
+      }
+      2 => {
+        // RL
+        let old = reg_val;
+        reg_val = reg_val << 1 | fc;
+        self.set_reg8(reg, reg_val);
+        self.set_flags(
+          Some(reg_val != 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(old, 0x80)),
+        )
+      }
+      3 => {
+        // RR
+        let old = reg_val;
+        reg_val = reg_val >> 1 | fc << 7;
+        self.set_reg8(reg, reg_val);
+        self.set_flags(
+          Some(reg_val != 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(old, 1)),
+        )
+      }
+      4 => {
+        // SLA
+        let old = reg_val;
+        reg_val = reg_val << 1;
+        self.set_reg8(reg, reg_val);
+        self.set_flags(
+          Some(reg_val != 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(old, 0x80)),
+        )
+      }
+      5 => {
+        // SRA
+        let old = reg_val;
+        reg_val = reg_val >> 1;
+        self.set_reg8(reg, reg_val);
+        self.set_flags(
+          Some(reg_val != 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(old, 1)),
+        )
+      }
+      6 => {
+        // SWAP
+        reg_val = ((reg_val & 0xF0) >> 4) | ((reg_val & 0xF) << 4);
+        self.set_reg8(reg, reg_val);
+        self.set_flags(Some(reg_val == 0), Some(false), Some(false), Some(false))
+      }
+      7 => {
+        // SRL
+        let upd = reg_val >> 1;
+        self.set_reg8(reg, upd);
+        self.set_flags(
+          Some(reg_val == 0),
+          Some(false),
+          Some(false),
+          Some(bit_eq(reg_val, 1)),
+        )
+      }
+      _ => {
+        log::error!("invalid cb operation {:#02X}", bit_op);
+      }
+    }
+  }
+
+  fn inst_rlca(&mut self) {
+    let u = self.r_a;
+    let c = u >> 7;
+
+    self.r_a = (u << 1) | c;
+    self.set_flags(Some(false), Some(false), Some(false), Some(c == 1))
+  }
+
+  fn inst_rrca(&mut self) {
+    let b = self.r_a & 1;
+    self.r_a = (self.r_a >> 1) | (b << 7);
+    self.set_flags(Some(false), Some(false), Some(false), Some(b == 1))
+  }
+
+  fn inst_rla(&mut self) {
+    let u = self.r_a;
+    let cf = self.check_flag(CARRY);
+    let c = bit_eq(u >> 7, 1);
+
+    self.r_a = (u << 1) | cf;
+    self.set_flags(Some(false), Some(false), Some(false), Some(c))
+  }
+
+  fn inst_stop(&mut self) {
+    log::error!("program calling stop");
+  }
+
+  fn inst_daa(&mut self) {
+    let mut u = 0;
+    let mut fc = false;
+    let n_flag = self.r_f & SUBTRACTION == SUBTRACTION;
+
+    if self.r_f & HALF_CARRY == HALF_CARRY || (!n_flag && (self.r_a & 0xF) > 9) {
+      u = 6;
+    }
+    if self.r_f & CARRY == CARRY || (!n_flag && self.r_a > 0x99) {
+      u |= 0x60;
+      fc = true;
+    }
+
+    if n_flag {
+      self.r_a -= u;
+    } else {
+      self.r_a += u
+    };
+    self.set_flags(Some(self.r_a == 0), None, Some(false), Some(fc))
+  }
+
+  fn inst_cpl(&mut self) {
+    self.r_a = !self.r_a;
+    self.set_flags(None, Some(true), Some(true), None);
+  }
+
+  fn inst_scf(&mut self) {
+    self.set_flags(None, Some(false), Some(false), Some(true));
+  }
+
+  fn inst_ccf(&mut self) {
+    self.set_flags(
+      None,
+      Some(false),
+      Some(false),
+      Some(self.check_flag(CARRY) == 0),
+    );
+  }
+
+  fn inst_halt(&mut self) {
+    self.halt = true;
+  }
+
+  fn inst_rra(&mut self) {
+    let carry = self.check_flag(CARRY);
+    let n_c = bit_eq(self.r_a, 1);
+
+    self.r_a = (self.r_a >> 1) | (carry << 7);
+    self.set_flags(Some(self.r_a == 0), Some(false), Some(false), Some(n_c))
+  }
+
+  fn inst_and(&mut self, inst: Instruction) {
+    self.r_a &= inst.param as Byte & 0xFF;
+    self.set_flags(Some(self.r_a == 0), Some(false), Some(true), Some(false));
+  }
+
+  fn inst_xor(&mut self, inst: Instruction) {
+    self.r_a ^= inst.param as Byte & 0xFF;
+    self.set_flags(Some(self.r_a == 0), Some(false), Some(false), Some(false));
+  }
+
+  fn inst_or(&mut self, inst: Instruction) {
+    self.r_a |= inst.param as Byte & 0xFF;
+    self.set_flags(Some(self.r_a == 0), Some(false), Some(false), Some(false));
+  }
+
+  fn inst_cp(&mut self, inst: Instruction) {
+    let ret = (self.r_a as Address).overflowing_sub(inst.param);
+    let h = (self.r_a as Address) & 0xF < inst.param & 0xF;
+    self.set_flags(Some(ret.0 == 0), Some(true), Some(h), Some(ret.1))
   }
 
   fn inst_ld(&mut self, inst: Instruction) {
@@ -219,7 +648,7 @@ impl GBCpu {
   }
 
   fn inst_jp(&mut self, inst: Instruction) {
-    self.goto_addr(inst.cond, inst.param,   false);
+    self.goto_addr(inst.cond, inst.param, false);
   }
 
   fn inst_jr(&mut self, inst: Instruction) {
@@ -266,17 +695,13 @@ impl GBCpu {
   }
 
   fn inst_push(&mut self, inst: Instruction) {
-    let hi = self.read_reg(inst.reg_1) as Byte >> 8 & 0xFF;
+    let hi = (self.read_reg(inst.reg_1) >> 8) as Byte & 0xFF;
     self.push_stack(hi);
     let lo = self.read_reg(inst.reg_1) as Byte & 0xFF;
     self.push_stack(lo);
   }
 
   fn inst_inc(&mut self, inst: Instruction) {
-    // if inst.reg_1.is_16_bit() {
-
-    // }
-
     let val = if inst.reg_1 == RegType::HL && inst.mode == AddrMode::MR {
       let data = (self.read_reg(RegType::HL) + 1) as Byte;
       let target = self.read_reg(RegType::HL);
@@ -289,11 +714,86 @@ impl GBCpu {
     };
     if bit_eq(self.cur_op, 0x03) {
       return;
-    } 
-    self.set_flags(Some(val == 0), Some(false), Some(!bit_eq(val, 0x0F)),None)
+    }
+    self.set_flags(Some(val == 0), Some(false), Some(!bit_eq(val, 0x0F)), None)
   }
 
-  fn goto_addr(&mut self, cond:CondType, addr: Address, push_pc: bool) {
+  fn inst_dec(&mut self, inst: Instruction) {
+    let val = if inst.reg_1 == RegType::HL && inst.mode == AddrMode::MR {
+      let data = (self.read_reg(RegType::HL) - 1) as Byte;
+      let target = self.read_reg(RegType::HL);
+      self.write_bus(target, data);
+      data
+    } else {
+      let data = self.read_reg(inst.reg_1) - 1;
+      self.set_reg(inst.reg_1, data);
+      self.read_reg(inst.reg_1) as Byte
+    };
+    if bit_eq(self.cur_op, 0x0B) {
+      return;
+    }
+    self.set_flags(Some(val == 0), Some(true), Some(bit_eq(val, 0x0F)), None)
+  }
+
+  fn inst_sub(&mut self, inst: Instruction) {
+    let reg_value = self.read_reg(inst.reg_1);
+    let val = reg_value - inst.param;
+    let h = reg_value & 0xF < inst.param & 0xF;
+    let c = reg_value < inst.param;
+
+    self.set_reg(inst.reg_1, val);
+    self.set_flags(Some(val == 0), Some(true), Some(h), Some(c))
+  }
+
+  fn inst_sbc(&mut self, inst: Instruction) {
+    let flag_c = if bit_eq(self.r_f, CARRY) { 1 } else { 0 };
+    let value = inst.param + flag_c;
+    let reg = self.read_reg(inst.reg_1);
+    let caled_value = reg - value;
+    let h = reg & 0xF < value & 0xF;
+    let c = reg < value;
+    self.set_reg(inst.reg_1, caled_value);
+    self.set_flags(Some(caled_value == 0), Some(true), Some(h), Some(c))
+  }
+
+  fn inst_adc(&mut self, inst: Instruction) {
+    let u = inst.param;
+    let a = self.r_a;
+    let c = if bit_eq(self.r_f, CARRY) { 1 } else { 0 };
+    let add_res = (a as Address + u + c) as Address;
+    self.r_a = add_res as Byte;
+
+    self.set_flags(
+      Some(self.r_a == 0),
+      Some(false),
+      Some((a as Address & 0xF) + (u & 0xF) + c > 0xF),
+      Some(add_res > 0xFF),
+    )
+  }
+
+  fn inst_add(&mut self, inst: Instruction) {
+    let reg_val = self.read_reg(inst.reg_1);
+    let val = reg_val.overflowing_add(inst.param);
+
+    let (z, h, c) = if !inst.reg_1.is_16_bit() || inst.reg_1 == RegType::SP {
+      let z = if inst.reg_1 == RegType::SP {
+        false
+      } else {
+        val.0 & 0xFF == 0
+      };
+      let h = reg_val & 0xF + inst.param & 0xF > 0xF;
+      let c = reg_val & 0xFF + inst.param & 0xFF > 0xFF;
+      (Some(z), Some(h), Some(c))
+    } else {
+      let h = reg_val & 0xFFF + inst.param & 0xFFF > 0xFFF;
+      let c = val.1;
+      (None, Some(h), Some(c))
+    };
+    self.set_reg(inst.reg_1, val.0);
+    self.set_flags(z, Some(false), h, c)
+  }
+
+  fn goto_addr(&mut self, cond: CondType, addr: Address, push_pc: bool) {
     if check_cond(self.r_f, cond) {
       if push_pc {
         self.skip_cycles += 2;
@@ -302,6 +802,15 @@ impl GBCpu {
 
       self.r_pc = addr;
       self.skip_cycles += 1;
+    }
+  }
+
+  #[inline]
+  fn check_flag(&self, flag: Byte) -> Byte {
+    if self.r_f & flag != 0 {
+      1
+    } else {
+      0
     }
   }
 
@@ -336,9 +845,48 @@ impl GBCpu {
         unset_mask |= flag_const::CARRY;
       }
     }
+    self.r_f = (self.r_f & !unset_mask) | set_mask;
   }
 
-  fn set_reg(&mut self, reg: RegType, data: Address) {}
+  fn set_reg8(&mut self, reg: RegType, data: Byte) {
+    if reg == RegType::HL {
+      self.write_bus(self.read_reg(RegType::HL), data)
+    } else {
+      self.set_reg(reg, data as Address)
+    }
+  }
+
+  fn set_reg(&mut self, reg: RegType, data: Address) {
+    match reg {
+      RegType::A => self.r_a = (data & 0xFF) as Byte,
+      RegType::F => self.r_f = (data & 0xFF) as Byte,
+      RegType::B => self.r_b = (data & 0xFF) as Byte,
+      RegType::C => self.r_c = (data & 0xFF) as Byte,
+      RegType::D => self.r_d = (data & 0xFF) as Byte,
+      RegType::E => self.r_e = (data & 0xFF) as Byte,
+      RegType::H => self.r_h = (data & 0xFF) as Byte,
+      RegType::L => self.r_l = (data & 0xFF) as Byte,
+      RegType::SP => self.r_sp = data,
+      RegType::PC => self.r_pc = data,
+      RegType::AF => {
+        self.r_f = ((data & 0xFF00) >> 8) as Byte;
+        self.r_a = (data & 0xFF) as Byte;
+      }
+      RegType::BC => {
+        self.r_c = ((data & 0xFF00) >> 8) as Byte;
+        self.r_b = (data & 0xFF) as Byte;
+      }
+      RegType::DE => {
+        self.r_e = ((data & 0xFF00) >> 8) as Byte;
+        self.r_d = (data & 0xFF) as Byte;
+      }
+      RegType::HL => {
+        self.r_l = ((data & 0xFF00) >> 8) as Byte;
+        self.r_h = (data & 0xFF) as Byte;
+      }
+      RegType::NONE => (),
+    }
+  }
 
   fn read_reg(&self, reg: RegType) -> Address {
     match reg {
@@ -352,44 +900,57 @@ impl GBCpu {
       RegType::L => self.r_l.into(),
       RegType::SP => self.r_sp,
       RegType::PC => self.r_pc,
+      RegType::AF => (self.r_f as Address) << 8 | self.r_a as Address,
+      RegType::BC => (self.r_c as Address) << 8 | self.r_b as Address,
+      RegType::DE => (self.r_e as Address) >> 8 | self.r_d as Address,
+      RegType::HL => (self.r_l as Address) >> 8 | self.r_h as Address,
       RegType::NONE => 0,
-      RegType::AF => self.r_a as Address >> 8 | self.r_f as Address,
-      RegType::BC => self.r_b as Address >> 8 | self.r_c as Address,
-      RegType::DE => self.r_d as Address >> 8 | self.r_e as Address,
-      RegType::HL => self.r_h as Address >> 8 | self.r_l as Address,
     }
   }
 
+  #[inline]
   fn read_and_forward_pc(&mut self) -> Address {
-    // mock
     let res = self.read_bus(self.r_pc);
     self.r_pc += 1;
     res as Address
   }
 
+  #[inline]
   fn read_bus(&self, addr: Address) -> Byte {
-    // moc
-    0
+    if addr == 0xFFFF {
+      return self.ie_register;
+    }
+    self.main_bus.read(addr)
   }
 
-  fn write_bus(&mut self, addr: Address, value: Byte) {}
+  #[inline]
+  fn write_bus(&mut self, addr: Address, value: Byte) {
+    if addr == 0xFFFF {
+      self.ie_register = value;
+      return;
+    }
+    self.main_bus.write(addr, value)
+  }
 
-
+  #[inline]
   fn push_stack(&mut self, value: Byte) {
     self.r_sp -= 1;
     self.write_bus(self.r_sp, value)
   }
 
+  #[inline]
   fn push_stack_16(&mut self, value: Address) {
     self.push_stack((value >> 8) as Byte);
     self.push_stack((value & 0xFF) as Byte);
   }
 
+  #[inline]
   fn pull_stack(&mut self) -> Byte {
     self.r_sp += 1;
     self.read_bus(self.r_sp)
   }
 
+  #[inline]
   fn pull_stack_16(&mut self) -> Address {
     let lo = self.pull_stack();
     let hi = self.pull_stack();

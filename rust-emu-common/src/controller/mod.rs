@@ -1,7 +1,7 @@
-use rust_emu_common::types::*;
+use crate::types::*;
 pub mod key_binding_parser;
 
-use key_binding_parser::{KeyType, TOTAL_BUTTONS};
+use self::key_binding_parser::{KeyType, TOTAL_BUTTONS};
 #[cfg(feature = "wasm")]
 pub mod web_key;
 

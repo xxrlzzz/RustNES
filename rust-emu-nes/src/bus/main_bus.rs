@@ -1,6 +1,9 @@
 use ciborium::de::from_reader;
 use ciborium::ser::into_writer;
 use log::{error, warn};
+use rust_emu_common::controller::key_binding_parser::KeyType;
+use rust_emu_common::controller::Controller;
+use rust_emu_common::mapper::Mapper;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -10,11 +13,8 @@ use std::{cell::RefCell, rc::Rc};
 use rust_emu_common::types::*;
 
 use crate::apu::Apu;
-use crate::controller::key_binding_parser::KeyType;
-use crate::controller::Controller;
 use crate::cpu::InterruptType;
 use crate::mapper::factory::load_mapper;
-use crate::mapper::Mapper;
 use crate::ppu::Ppu;
 
 use super::message_bus::Message;

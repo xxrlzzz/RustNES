@@ -1,11 +1,11 @@
 use log::warn;
 use rust_emu_common::component::cartridge::Cartridge;
+use rust_emu_common::mapper::{Mapper, save};
 use serde::{Deserialize, Serialize};
 
 use crate::cartridge::{NESCartridge, BANK_SIZE};
-use crate::mapper::Mapper;
 
-use super::{save, NROM};
+use super::NROM;
 
 use rust_emu_common::types::*;
 

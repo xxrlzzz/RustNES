@@ -5,8 +5,7 @@ use rust_emu_common::types::*;
 use self::opcodes::*;
 use crate::bus::main_bus::MainBus;
 use log::warn;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 mod opcodes;
 
@@ -168,7 +167,7 @@ impl Cpu {
     self.interrupt = i_type;
   }
 
-  pub fn interrupt(&mut self, i_type: InterruptType) {
+  fn handle_interrupt(&mut self, i_type: InterruptType) {
     if i_type == InterruptType::BRK {
       self.r_pc += 1;
     }
@@ -267,7 +266,7 @@ impl Cpu {
     }
 
     if self.interrupt != InterruptType::None {
-      self.interrupt(self.interrupt.clone());
+      self.handle_interrupt(self.interrupt.clone());
       self.interrupt = InterruptType::None;
     }
 

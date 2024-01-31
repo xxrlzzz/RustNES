@@ -1,5 +1,5 @@
 #[cfg(feature = "use_gl")]
-pub mod gl;
+pub mod gl_helper;
 #[cfg(feature = "use_gl")]
 pub mod glfw_window;
 
@@ -8,3 +8,4 @@ pub mod webgl;
 
 #[cfg(any(feature = "use_gl", feature = "wasm"))]
 pub(crate) mod shader;
+

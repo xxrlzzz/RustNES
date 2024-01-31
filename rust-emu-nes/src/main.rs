@@ -2,7 +2,8 @@ use clap::Parser;
 use rust_emu_common::logger;
 
 #[cfg(any(feature = "use_gl", feature = "use_sdl2"))]
-use rust_nes::{controller, emulator};
+use rust_emu_common::{controller, emulator};
+use rust_nes::instance::init_rom_from_path;
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -29,7 +30,7 @@ fn main() {
   let args = Args::parse();
   let (p1_key, p2_key) = controller::key_binding_parser::parse_key_binding(&args.key_binding_path);
   let mut emulator = emulator::Emulator::new(args.scale, args.save_path, p1_key, p2_key);
-  let instance = emulator.create_instance(&args.rom_path);
+  let instance = init_rom_from_path(&args.rom_path, &emulator.runtime_config).expect("Failed to load rom.");
   emulator.run(instance);
 }
 

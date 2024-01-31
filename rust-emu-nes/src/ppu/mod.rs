@@ -1,4 +1,5 @@
 use image::{GenericImage, RgbaImage};
+use rust_emu_common::mapper::Mapper;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -14,7 +15,6 @@ use crate::bus::main_bus::{
 use crate::bus::message_bus::Message;
 use crate::bus::picture_bus::PictureBus;
 use crate::cpu::InterruptType;
-use crate::mapper::Mapper;
 
 use rust_emu_common::types::*;
 

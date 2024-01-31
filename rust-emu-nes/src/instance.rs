@@ -7,7 +7,7 @@ use std::{
 use ciborium::{de::from_reader, ser::into_writer};
 use image::RgbaImage;
 use log::{error, info, warn};
-use rust_emu_common::instance::{FrameBuffer, Instance, RunningStatus};
+use rust_emu_common::{emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}};
 use std::sync::mpsc;
 
 use crate::{
@@ -15,20 +15,38 @@ use crate::{
   bus::{main_bus::MainBus, message_bus::Message},
   cartridge::NESCartridge,
   cpu::{Cpu, InterruptType},
-  emulator::RuntimeConfig,
   mapper::factory,
   ppu::{Ppu, SCANLINE_VISIBLE_DOTS, VISIBLE_SCANLINES},
 };
 
-pub struct InstanceFactory {}
+pub fn init_rom_from_data(
+  rom_data: &[u8],
+  runtime_config: &RuntimeConfig,
+) -> Option<Box<NESInstance>> {
+  let mut cartridge = NESCartridge::new();
+  if !cartridge.load_from_data(rom_data) {
+    return None;
+  }
+
+  NESInstance::init_rom(cartridge, runtime_config)
+}
+
+pub fn init_rom_from_path(
+  rom_path: &str,
+  runtime_config: &RuntimeConfig,
+) -> Option<Box<NESInstance>> {
+  let mut cartridge = NESCartridge::new();
+  if !cartridge.load_from_file(rom_path) {
+    return None;
+  }
+  NESInstance::init_rom(cartridge, runtime_config)
+}
 
 pub struct NESInstance {
   pub(crate) apu: Arc<Mutex<Apu>>,
   pub(crate) cpu: Arc<Mutex<Cpu>>,
   pub(crate) ppu: Arc<Mutex<Ppu>>,
   pub(crate) stat: RunningStatus,
-  // pub(crate) cycle_timer: Instant,
-  // pub(crate) elapsed_time: Duration,
   pub(crate) message_rx: mpsc::Receiver<Message>,
   pub(crate) rgba: Option<FrameBuffer>,
 }
@@ -65,12 +83,7 @@ impl Instance for NESInstance {
   }
 
   fn toggle_pause(&mut self) {
-    if self.stat.is_focusing() {
-      // self.cycle_timer = Instant::now();
-      self.stat.unpause();
-    } else {
-      self.stat.pause();
-    }
+    self.stat.toggle_pause()
   }
 
   fn can_run(&self) -> bool {
@@ -80,12 +93,6 @@ impl Instance for NESInstance {
   fn take_rgba(&mut self) -> Option<FrameBuffer> {
     self.rgba.take()
   }
-
-  // pub(crate) fn update_timer(&mut self) {
-  //   let now = Instant::now();
-  //   self.elapsed_time += now - self.cycle_timer;
-  //   self.cycle_timer = now;
-  // }
 
   fn step(&mut self) -> u32 {
     let circle = {
@@ -135,31 +142,6 @@ impl Instance for NESInstance {
 
   fn is_pausing(&mut self) -> bool {
     self.stat.is_pausing()
-  }
-}
-
-impl InstanceFactory {
-  pub fn init_rom_from_data(
-    rom_data: &[u8],
-    runtime_config: &RuntimeConfig,
-  ) -> Option<Box<NESInstance>> {
-    let mut cartridge = NESCartridge::new();
-    if !cartridge.load_from_data(rom_data) {
-      return None;
-    }
-
-    NESInstance::init_rom(cartridge, runtime_config)
-  }
-
-  pub fn init_rom_from_path(
-    rom_path: &str,
-    runtime_config: &RuntimeConfig,
-  ) -> Option<Box<NESInstance>> {
-    let mut cartridge = NESCartridge::new();
-    if !cartridge.load_from_file(rom_path) {
-      return None;
-    }
-    NESInstance::init_rom(cartridge, runtime_config)
   }
 }
 
@@ -234,7 +216,7 @@ impl NESInstance {
     }
 
     // ppu.borrow_mut().reset();
-    let instance = Self::new(apu, cpu.clone(), ppu, message_rx);
+    let instance = Self::new(apu, cpu, ppu, message_rx);
 
     Some(Box::new(instance))
   }

@@ -1,15 +1,13 @@
 use log::{info, warn};
 use rust_emu_common::component::cartridge::Cartridge;
+use rust_emu_common::mapper::{Mapper, save};
 use serde::{Deserialize, Serialize};
 
 use crate::cartridge::NESCartridge;
 
-use super::{save, SXROM};
+use super::SXROM;
 
-use super::{
-  factory::{MirrorCallback, NameTableMirroring},
-  Mapper,
-};
+use super::factory::{MirrorCallback, NameTableMirroring};
 
 use rust_emu_common::types::*;
 

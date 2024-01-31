@@ -1,5 +1,8 @@
 mod cpu;
 mod bus;
-mod cartridge;
+pub mod cartridge;
+mod mapper;
+pub mod instance;
 
 extern crate serde;
+extern crate log;

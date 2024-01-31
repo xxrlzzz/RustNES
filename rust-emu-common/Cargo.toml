@@ -11,3 +11,24 @@ wasm-bindgen = { version = "0.2.74" }
 [dependencies]
 image = { version = "0.23.12", features = ["rgb"] }
 log = { version = "0.4", features = ["std"] }
+lazy_static = "1.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_bytes = "0.11.5"
+serde_json = "1.0.59"
+ini = "1.3.0"
+
+# glfw and audio
+portaudio = { version = "0.7.0", optional = true }
+glfw = { version = "0.42.0", optional = true }
+gl = { version = "0.14.0", optional = true }
+
+# sdl2 and android 
+sdl2 = { version = "0.35.2", optional = true }
+
+[features]
+default = ["use_gl"]
+use_gl = ["gl", "glfw"]
+native-audio = ["portaudio"]
+# wasm = ["web-sys"]
+# wasm-miniapp = []
+use_sdl2 = ["sdl2"]

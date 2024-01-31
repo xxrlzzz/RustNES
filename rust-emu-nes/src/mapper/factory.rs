@@ -7,12 +7,11 @@ use crate::mapper::n_rom::NRom;
 use crate::mapper::sx_rom::SxRom;
 use crate::mapper::tx_rom::TxRom;
 use crate::mapper::ux_rom::UxRom;
-use crate::mapper::Mapper;
 use std::{cell::RefCell, rc::Rc};
 
 use super::{CNROM, NROM, SXROM, TXROM, UXROM};
 
-use rust_emu_common::{component::cartridge::Cartridge, types::*};
+use rust_emu_common::{component::cartridge::Cartridge, mapper::Mapper, types::*};
 
 pub type MirrorCallback = Box<dyn FnMut(u8) -> ()>;
 pub type IRQCallback = Box<dyn FnMut() -> ()>;

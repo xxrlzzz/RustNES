@@ -1,14 +1,12 @@
 use std::thread;
 
-use log::{error, info};
-use rust_emu_common::instance::Instance;
+use crate::instance::Instance;
 
 use super::{Emulator, RuntimeConfig};
 
 use crate::emulator::FRAME_DURATION;
-use crate::instance::NESInstance;
 
-use rust_emu_common::instant::Instant;
+use crate::instant::Instant;
 
 impl Emulator {
   pub fn run(&mut self, mut instance: Box<dyn Instance>) {
@@ -16,9 +14,7 @@ impl Emulator {
 
     use glfw::Context;
 
-    use crate::render::{gl, glfw_window};
-
-    // let mut instance = self.create_instance(rom_path);
+    use crate::render::{gl_helper, glfw_window};
 
     let mut glfw = glfw_window::init_glfw();
     let runtime_config = self.runtime_config.clone();
@@ -33,9 +29,9 @@ impl Emulator {
     }
 
     #[allow(non_snake_case)]
-    let (shader, VAO) = unsafe { (gl::compile_shader(), gl::create_vao()) };
+    let (shader, VAO) = unsafe { (gl_helper::compile_shader(), gl_helper::create_vao()) };
 
-    let texture = unsafe { gl::create_texture(shader) };
+    let texture = unsafe { gl_helper::create_texture(shader) };
 
     // Loop until the user closes the window
     while !window.borrow().should_close() {
@@ -51,14 +47,13 @@ impl Emulator {
       }
       if let Some(rgba) = instance.take_rgba() {
         unsafe {
-          gl::set_texture(rgba);
-          gl::draw_frame(shader, VAO, texture);
+          gl_helper::set_texture(rgba);
+          gl_helper::draw_frame(shader, VAO, texture);
         }
       }
 
       if instance.can_run() {
-        // instance.update_timer();
-        self.update_timer();
+        // self.update_timer();
         let cost = self.one_frame(&mut instance);
         if FRAME_DURATION > cost {
           thread::sleep(FRAME_DURATION - cost);
@@ -90,16 +85,16 @@ impl Emulator {
         }
       }
       WindowEvent::Key(glfw::Key::Z, _, Action::Press, _) => {
-        instance.do_save(&runtime_config.save_path)
+        // instance.do_save(&runtime_config.save_path)
       }
       WindowEvent::Key(glfw::Key::X, _, Action::Press, _) => {
-        match NESInstance::load(&runtime_config) {
-          Ok(instance_load) => {
-            *instance = Box::new(instance_load);
-            info!("load success")
-          }
-          Err(e) => error!("load failed: {}", e),
-        }
+        // match NESInstance::load(&runtime_config) {
+        //   Ok(instance_load) => {
+        //     *instance = Box::new(instance_load);
+        //     info!("load success")
+        //   }
+        //   Err(e) => error!("load failed: {}", e),
+        // }
       }
       WindowEvent::Key(glfw::Key::F2, _, Action::Press, _) => {
         instance.toggle_pause();

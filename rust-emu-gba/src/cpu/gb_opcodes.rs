@@ -1,6 +1,7 @@
 use rust_emu_common::types::Address;
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum AddrMode {
   IMP,
   R2D16,
@@ -25,7 +26,7 @@ pub(crate) enum AddrMode {
   R2A16,
 }
 
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum RegType {
   NONE,
   A,
@@ -50,7 +51,7 @@ impl RegType {
   }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub(crate) enum InstructionType {
   NONE,
   NOP,
@@ -103,7 +104,7 @@ pub(crate) enum InstructionType {
   SET,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub(crate) enum CondType {
   NONE,
   NZ,
@@ -112,7 +113,7 @@ pub(crate) enum CondType {
   C,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub(crate) struct Instruction {
   pub(crate) i_type: InstructionType,
   pub(crate) mode: AddrMode,

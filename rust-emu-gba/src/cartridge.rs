@@ -1,9 +1,11 @@
+use rust_emu_common::component::cartridge::Cartridge;
 use rust_emu_common::types::*;
 use log::{error, info};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Read;
+use std::io::Seek;
 use std::vec::Vec;
 
 pub static BANK_SIZE: usize = 1 << 10;
@@ -25,7 +27,7 @@ pub struct GBACartridge {
   new_lic_code: [Byte; 2],
   sgb_flag: Byte,
   cartridge_type: Byte,
-  ram_size: usize,
+  pub(crate) ram_size: usize,
 }
 
 impl GBACartridge {
@@ -41,7 +43,7 @@ impl GBACartridge {
     }
   }
 
-  fn read_header(&mut self, mut header: &[u8]) {
+  fn read_header(&mut self, header: &[u8]) {
     self.title.copy_from_slice(&header[0x134..0x144]);
     self.new_lic_code = header[0x144..0x146]
       .try_into()
@@ -76,7 +78,7 @@ impl GBACartridge {
   }
 
   pub fn load_from_file(&mut self, path_str: &str) -> bool {
-    let mut file = match File::open(path_str) {
+    let file = match File::open(path_str) {
       Err(why) => {
         error!("couldn't open file: {}", why);
         return false;
@@ -85,10 +87,38 @@ impl GBACartridge {
     };
     let mut file_reader = BufReader::new(file);
     let mut header = Vec::with_capacity(0x14e);
-    file_reader.by_ref().take(0x14e).read_to_end(&mut header).expect("Read ROM file failed");
+    file_reader.by_ref().take(0x14e).read_to_end(&mut header).expect("Read ROM file header failed");
     self.read_header(&header);
+    let r = file_reader.rewind();
+    if r.is_err() {
+      error!("rewind failed");
+      return false;
+    }
+    file_reader.by_ref().take(self.prg_rom.capacity() as u64).read_to_end(&mut self.prg_rom).expect("Read ROM file content failed");
     true
   }
+}
+
+impl Cartridge for GBACartridge {
+    fn get_rom(&self) -> &Vec<Byte> {
+        return &self.prg_rom;
+    }
+
+    fn get_vrom(&self) -> &Vec<Byte> {
+        return &self.chr_rom;
+    }
+
+    fn get_mapper(&self) -> Byte {
+      self.cartridge_type
+    }
+
+    fn get_name_table_mirroring(&self) -> Byte {
+        0
+    }
+
+    fn has_extended_ram(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

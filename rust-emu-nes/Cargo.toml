@@ -16,7 +16,6 @@ lazy_static = "1.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11.5"
 serde_json = "1.0.59"
-ini = "1.3.0"
 image = { version = "0.23.12", features = ["rgb"] }
 num_enum = "0.5.7"
 ciborium = "0.2.0"
@@ -67,7 +66,7 @@ crate-type = ["cdylib", "lib"]
 
 
 [[bin]]
-name = "emulator"
+name = "emulator-nes"
 path = "src/main.rs"
 
 # for web

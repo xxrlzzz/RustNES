@@ -1,12 +1,11 @@
 use log::info;
+use rust_emu_common::mapper::Mapper;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::vec::Vec;
 
 use rust_emu_common::types::*;
-
-use crate::mapper::Mapper;
 
 mod name_table_mirroring {
   pub const HORIZONTAL: u8 = 0;
