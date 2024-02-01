@@ -2,10 +2,10 @@ pub type Byte = u8;
 pub type Address = u16;
 
 #[inline]
-pub fn bit_eq<T: std::ops::BitAndAssign + std::ops::BitAnd + PartialEq + Copy>(a: T, b: T) -> bool {
-  let mut ca = a;
-  ca &= b;
-  return ca == b;
+pub fn bit_eq<T: std::ops::BitAnd<Output = T> + PartialEq + Copy>(a: T, b: T) -> bool {
+  // let mut ca = a;
+  // ca &= b;
+  return (a & b) == b;
 }
 
 mod test {

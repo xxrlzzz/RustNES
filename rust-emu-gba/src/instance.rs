@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex, mpsc};
 
-use rust_emu_common::{emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}};
+use rust_emu_common::{emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}, types::*};
 
-use crate::{bus::MainBus, cartridge::GBACartridge, cpu::GBCpu, mapper::create_mapper};
+use crate::{bus::MainBus, cartridge::GBACartridge, cpu::GBCpu, mapper::create_mapper, ppu::GBAPpu};
 
 #[derive(Debug, Clone)]
 pub enum Message {
-  CpuInterrupt(),
+  CpuInterrupt(Byte),
   PpuRender(),
 }
 
@@ -36,6 +36,7 @@ pub fn init_rom_from_path(
 
 pub struct GBAInstance {
   pub(crate) cpu: Arc<Mutex<GBCpu>>,
+  pub(crate) ppu: Arc<Mutex<GBAPpu>>,
   pub(crate) stat: RunningStatus,
   pub(crate) message_rx: mpsc::Receiver<Message>,
   pub(crate) rgba: Option<FrameBuffer>,
@@ -44,10 +45,12 @@ pub struct GBAInstance {
 impl GBAInstance {
   pub(crate) fn new(
     cpu: Arc<Mutex<GBCpu>>,
+    ppu: Arc<Mutex<GBAPpu>>,
     message_rx: mpsc::Receiver<Message>,
   ) -> Self {
     Self {
       cpu,
+      ppu,
       message_rx,
       stat: RunningStatus::Running,
       rgba: None,
@@ -62,8 +65,12 @@ impl Instance for GBAInstance {
         let circle = cpu.step();
         circle
       };
-      log::debug!("step {}", circle);
-
+      // log::info!("step {}", circle);
+      for _ in 0..circle {
+        for _ in 0..4 {
+          self.ppu.lock().unwrap().step();
+        }
+      }
       self.consume_message();
       circle
     }
@@ -111,7 +118,7 @@ impl Instance for GBAInstance {
 impl GBAInstance {
   pub fn init_rom(cart: GBACartridge) -> Option<Box<Self>> {
     let (message_sx, message_rx) = mpsc::channel::<Message>();    
-    // let ppu = Arc::new(Mutex::new(GBAPpu::new(message_sx.clone())));
+    let ppu = Arc::new(Mutex::new(GBAPpu::new(message_sx.clone())));
 
     let mut main_bus = MainBus::new();
     // main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
@@ -121,7 +128,7 @@ impl GBAInstance {
     cpu.main_bus_mut().set_mapper(mapper.clone());
     cpu.reset();
 
-    let instance = Self::new(Arc::new(Mutex::new(cpu)), message_rx);
+    let instance = Self::new(Arc::new(Mutex::new(cpu)), ppu, message_rx);
 
     Some(Box::new(instance))
   }
