@@ -5,11 +5,16 @@ use crate::cartridge::GBACartridge;
 
 pub struct NRom {
   cart: GBACartridge,
+  character_ram: [Byte; 0x2000],
 }
 
 impl NRom {
   pub fn new(cart: GBACartridge) -> Self {
-    NRom { cart }
+    NRom { 
+      cart,
+      
+      character_ram: [0; 0x2000],
+    }
   }
 }
 
@@ -22,12 +27,12 @@ impl Mapper for NRom {
       self.cart.get_rom()[addr as usize]
     }
 
-    fn write_chr(&mut self, _: Address, _: Byte) {
-        todo!()
+    fn write_chr(&mut self, addr: Address, value: Byte) {
+      self.character_ram[addr as usize - 0x8000] = value;
     }
 
     fn read_chr(&self, addr: Address) -> Byte {
-        todo!()
+      self.character_ram[addr as usize - 0x8000]
     }
 
     fn has_extended_ram(&self) -> bool {

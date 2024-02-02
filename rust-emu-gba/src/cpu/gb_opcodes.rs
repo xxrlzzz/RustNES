@@ -1,4 +1,4 @@
-use rust_emu_common::types::Address;
+use rust_emu_common::types::{Address, Byte};
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Clone, Copy, Serialize, Deserialize)]
@@ -122,6 +122,8 @@ pub(crate) struct Instruction {
   pub(crate) cond: CondType,
   // pub(crate) param: Byte,
   pub(crate) param: Address,
+
+  pub(crate) cycles: Byte,
 }
 
 impl Default for Instruction {
@@ -132,7 +134,8 @@ impl Default for Instruction {
       reg_1: RegType::NONE,
       reg_2: RegType::NONE,
       cond: CondType::NONE,
-      param: 0
+      param: 0,
+      cycles: 0,
     }
   }
 }
@@ -159,7 +162,8 @@ macro_rules! create_instruction {
             reg_1: RegType::NONE,
             reg_2: RegType::NONE,
             cond: CondType::NONE,
-            param: 0
+            param: 0,
+            cycles: 1,
           };
           $(instance.$field = $value;)*
           instance
@@ -171,57 +175,57 @@ macro_rules! create_instruction {
 static INSTRUCTIONS: [Instruction;0x100] = [
 // 0x0X
 create_instruction!(i_type = InstructionType::NOP),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 =  RegType::BC),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 =  RegType::BC, cycles = 3),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2R, reg_1 =  RegType::BC, reg_2 = RegType::A),
-create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 =  RegType::BC ),
+create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 =  RegType::BC),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 =  RegType::B),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 =  RegType::B),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::B),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::B, cycles = 2),
 create_instruction!(i_type = InstructionType::RLCA),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::A162R, reg_2 = RegType::SP),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::A162R, reg_2 = RegType::SP, cycles = 3),
 create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2R, reg_1 = RegType::HL, reg_2 = RegType::BC),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2MR, reg_1 = RegType::A, reg_2 = RegType::BC),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::BC),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::C),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::C),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::C),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::C, cycles = 2),
 create_instruction!(i_type = InstructionType::RRCA),
 
 //0x1X
-create_instruction!(i_type = InstructionType::STOP),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 = RegType::DE),
+create_instruction!(i_type = InstructionType::STOP, cycles = 2),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 = RegType::DE, cycles = 3),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2R, reg_1 = RegType::DE, reg_2 = RegType::A),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::DE),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::D),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::D),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::D),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::D, cycles = 2),
 create_instruction!(i_type = InstructionType::RLA),
-create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8),
+create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cycles = 2),
 create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2R, reg_1 = RegType::HL, reg_2 = RegType::DE),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2MR, reg_1 = RegType::A, reg_2 = RegType::DE),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::DE),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::E),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::E),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::E),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::E, cycles = 2),
 create_instruction!(i_type = InstructionType::RRA),
 
 
 //0x2X
-create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::NZ),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 = RegType::HL),
+create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::NZ, cycles = 2),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D16, reg_1 = RegType::HL, cycles = 3),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::HLI2R, reg_1 = RegType::HL, reg_2 = RegType::A),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::HL),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::H),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::H),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::H),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::H, cycles = 2),
 create_instruction!(i_type = InstructionType::DAA),
-create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::Z),
+create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::Z, cycles = 2),
 create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2R, reg_1 = RegType::HL, reg_2 = RegType::HL),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2HLI, reg_1 = RegType::A, reg_2 = RegType::HL),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::HL),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::L),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::L),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::L),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::L, cycles = 2),
 create_instruction!(i_type = InstructionType::CPL),
 
 //0x3X
@@ -231,15 +235,15 @@ create_instruction!(i_type = InstructionType::LD, mode = AddrMode::HLD2R, reg_1 
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::SP),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::MR, reg_1 = RegType::HL),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::MR, reg_1 = RegType::HL),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2D8, reg_1 = RegType::HL),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2D8, reg_1 = RegType::HL, cycles = 2),
 create_instruction!(i_type = InstructionType::SCF),
-create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::C),
+create_instruction!(i_type = InstructionType::JR, mode = AddrMode::D8, cond = CondType::C, cycles = 2),
 create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2R, reg_1 = RegType::HL, reg_2 = RegType::SP),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2HLD, reg_1 = RegType::A, reg_2 = RegType::HL),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::SP),
 create_instruction!(i_type = InstructionType::INC, mode = AddrMode::R, reg_1 = RegType::A),
 create_instruction!(i_type = InstructionType::DEC, mode = AddrMode::R, reg_1 = RegType::A),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::CCF),
 
 //0x4X
@@ -389,73 +393,73 @@ create_instruction!(i_type = InstructionType::CP, mode = AddrMode::R2R, reg_1 = 
 // 0xCX
 create_instruction!(i_type = InstructionType::RET, mode = AddrMode::IMP, cond = CondType::NZ),
 create_instruction!(i_type = InstructionType::POP, mode = AddrMode::R2R, reg_1 = RegType::BC),
-create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::NZ),
-create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16),
-create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::NZ),
+create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::NZ, cycles = 3),
+create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cycles = 3),
+create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::NZ, cycles = 3),
 create_instruction!(i_type = InstructionType::PUSH, mode = AddrMode::R, reg_1 = RegType::BC),
-create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x00),
 create_instruction!(i_type = InstructionType::RET, mode = AddrMode::IMP, cond = CondType::Z),
 create_instruction!(i_type = InstructionType::RET),
-create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::Z),
+create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::Z, cycles = 3),
 create_instruction!(i_type = InstructionType::CB, mode = AddrMode::D8),
-create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::Z),
-create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16),
-create_instruction!(i_type = InstructionType::ADC, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::Z, cycles = 3),
+create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cycles = 3),
+create_instruction!(i_type = InstructionType::ADC, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x08),
 
 // 0xDX
 create_instruction!(i_type = InstructionType::RET, mode = AddrMode::IMP, cond = CondType::NC),
 create_instruction!(i_type = InstructionType::POP, mode = AddrMode::R, reg_1 = RegType::DE),
-create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::NC),
-create_instruction!(i_type = InstructionType::NONE), // 0xD3
-create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::NC),
+create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::NC, cycles = 3),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xD3
+create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::NC, cycles = 3),
 create_instruction!(i_type = InstructionType::PUSH, mode = AddrMode::R, reg_1 = RegType::DE),
-create_instruction!(i_type = InstructionType::SUB, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::SUB, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x10),
 create_instruction!(i_type = InstructionType::RET, mode = AddrMode::IMP, cond = CondType::C),
 create_instruction!(i_type = InstructionType::RETI),
-create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::C),
-create_instruction!(i_type = InstructionType::NONE), // 0xDB
-create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::C),
-create_instruction!(i_type = InstructionType::NONE), // 0xDD
-create_instruction!(i_type = InstructionType::SBC, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::JP, mode = AddrMode::D16, cond = CondType::C, cycles = 3),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xDB
+create_instruction!(i_type = InstructionType::CALL, mode = AddrMode::D16, cond = CondType::C, cycles = 3),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xDD
+create_instruction!(i_type = InstructionType::SBC, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x18),
 
 //0xEX
-create_instruction!(i_type = InstructionType::LDH, mode = AddrMode::A82R, reg_2 = RegType::A),
+create_instruction!(i_type = InstructionType::LDH, mode = AddrMode::A82R, reg_2 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::POP, mode = AddrMode::R, reg_1 = RegType::HL),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2R, reg_2 = RegType::C, reg_1 = RegType::A),
-create_instruction!(i_type = InstructionType::NONE), // 0xE3
-create_instruction!(i_type = InstructionType::NONE), // 0xE4
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::MR2R, reg_2 = RegType::C, reg_1 = RegType::A, cycles = 2),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xE3
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xE4
 create_instruction!(i_type = InstructionType::PUSH, mode = AddrMode::R, reg_1 = RegType::HL),
-create_instruction!(i_type = InstructionType::AND, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::AND, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x20),
-create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2D8, reg_1 = RegType::SP),
+create_instruction!(i_type = InstructionType::ADD, mode = AddrMode::R2D8, reg_1 = RegType::SP, cycles = 2),
 create_instruction!(i_type = InstructionType::JP, mode = AddrMode::R, reg_1 = RegType::HL),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::A162R, reg_2 = RegType::A),
-create_instruction!(i_type = InstructionType::NONE), // 0xEB
-create_instruction!(i_type = InstructionType::NONE), // 0xEC
-create_instruction!(i_type = InstructionType::NONE), // 0xED
-create_instruction!(i_type = InstructionType::XOR, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::A162R, reg_2 = RegType::A, cycles = 3),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xEB
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xEC
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xED
+create_instruction!(i_type = InstructionType::XOR, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x28),
 
 //0xFX
-create_instruction!(i_type = InstructionType::LDH, mode = AddrMode::R2A8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::LDH, mode = AddrMode::R2A8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::POP, mode = AddrMode::R, reg_1 = RegType::AF),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2MR, reg_1 = RegType::A, reg_2 = RegType::C),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2MR, reg_1 = RegType::A, reg_2 = RegType::C, cycles = 2),
 create_instruction!(i_type = InstructionType::DI),
-create_instruction!(i_type = InstructionType::NONE), // 0xF4
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xF4
 create_instruction!(i_type = InstructionType::PUSH, mode = AddrMode::R, reg_1 = RegType::AF),
-create_instruction!(i_type = InstructionType::OR, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::OR, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x30),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::HL2SPR, reg_1 = RegType::HL, reg_2 = RegType::SP),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::HL2SPR, reg_1 = RegType::HL, reg_2 = RegType::SP, cycles = 2),
 create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2R, reg_1 = RegType::SP, reg_2 = RegType::HL),
-create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2A16, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::LD, mode = AddrMode::R2A16, reg_1 = RegType::A, cycles = 3),
 create_instruction!(i_type = InstructionType::EI),
-create_instruction!(i_type = InstructionType::NONE), // 0xFC
-create_instruction!(i_type = InstructionType::NONE), // 0xFD
-create_instruction!(i_type = InstructionType::CP, mode = AddrMode::R2D8, reg_1 = RegType::A),
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xFC
+create_instruction!(i_type = InstructionType::NONE, cycles = 0), // 0xFD
+create_instruction!(i_type = InstructionType::CP, mode = AddrMode::R2D8, reg_1 = RegType::A, cycles = 2),
 create_instruction!(i_type = InstructionType::RST, mode = AddrMode::IMP, param = 0x38),
 ];
 

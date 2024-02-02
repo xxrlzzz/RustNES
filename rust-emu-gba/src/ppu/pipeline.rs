@@ -53,14 +53,21 @@ impl PixelFiFo {
     }
   }
 
-  pub fn fetch(&mut self, lcd: &mut Lcd, picture_bus: &PictureBus, window_line: Byte) {
+  pub fn fetch(
+    &mut self,
+    lcd: &mut Lcd,
+    picture_bus: &PictureBus,
+    window_line: Byte,
+    line_sprites: Vec<usize>,
+  ) {
     match self.cur_fetch_state {
       FetchState::Tile => {
         self.fetched_entry_count = 0;
 
         if lcd.bgw_enable() {
-          self.bgw_fetch_data[0] = picture_bus
-            .vram_read(lcd.bg_map_area() + (self.map_x as Address / 8 + self.map_y as Address / 8 * 32));
+          self.bgw_fetch_data[0] = picture_bus.vram_read(
+            lcd.bg_map_area() + (self.map_x as Address / 8 + self.map_y as Address / 8 * 32),
+          );
           if lcd.bgw_data_area() == 0x8800 {
             self.bgw_fetch_data[0] += 128;
           }
@@ -68,31 +75,36 @@ impl PixelFiFo {
           self.load_window_tile(lcd, picture_bus, window_line);
         }
 
-        // if lcd.obj_enable() && line_sprites {
-        //   self.load_sprite_tile();
-        // }
+        if lcd.obj_enable() && line_sprites.len() > 0 {
+          self.load_sprite_tile(line_sprites, &lcd, &picture_bus);
+        }
 
         self.cur_fetch_state = FetchState::Data0;
         self.fetch_x += 8;
       }
       FetchState::Data0 => {
-        self.bgw_fetch_data[1] = picture_bus.vram_read(lcd.bgw_data_area() +( self.bgw_fetch_data[0] * 16 + self.tile_y) as Address);
+        self.bgw_fetch_data[1] = picture_bus.vram_read(
+          lcd.bgw_data_area() + (self.bgw_fetch_data[0] as Address * 16 + self.tile_y as Address),
+        );
         self.load_sprite_data(0, &lcd, &picture_bus);
         self.cur_fetch_state = FetchState::Data1;
-      },
+      }
       FetchState::Data1 => {
-        self.bgw_fetch_data[2] = picture_bus.vram_read(lcd.bgw_data_area() + (self.bgw_fetch_data[0] * 16 + self.tile_y + 1) as Address);
+        self.bgw_fetch_data[2] = picture_bus.vram_read(
+          lcd.bgw_data_area()
+            + (self.bgw_fetch_data[0] as Address * 16 + self.tile_y as Address + 1),
+        );
         self.load_sprite_data(1, &lcd, &picture_bus);
         self.cur_fetch_state = FetchState::Idle;
-      },
+      }
       FetchState::Idle => {
         self.cur_fetch_state = FetchState::Push;
-      },
+      }
       FetchState::Push => {
         if self.fifo_add(&lcd) {
           self.cur_fetch_state = FetchState::Tile;
         }
-      },
+      }
     }
   }
 
@@ -100,14 +112,14 @@ impl PixelFiFo {
     let mut ret = None;
     if self.pixel_fifo.len() > 8 {
       let pixel = self.pixel_fifo.pop_front().unwrap();
-      
+
       if self.line_x >= lcd.scroll_x % 8 {
         // put video buffer
         ret = Some((self.pushed_x, pixel));
         self.pushed_x += 1;
       }
 
-      self.line_x +=1;
+      self.line_x += 1;
     }
     ret
   }
@@ -130,7 +142,7 @@ impl PixelFiFo {
     }
   }
 
-  fn load_sprite_data(&mut self, offset: usize, lcd: &Lcd ,picture_bus: &PictureBus,) {
+  fn load_sprite_data(&mut self, offset: usize, lcd: &Lcd, picture_bus: &PictureBus) {
     let cur_y = lcd.ly;
     let sprite_height = lcd.obj_height();
 
@@ -139,7 +151,7 @@ impl PixelFiFo {
 
       if self.fetched_entrys[i].y_flip() {
         // flipped upside down
-        ty = sprite_height * 2 -2  - ty;
+        ty = sprite_height * 2 - 2 - ty;
       }
 
       let mut tile_index = self.fetched_entrys[i].title;
@@ -149,7 +161,26 @@ impl PixelFiFo {
         tile_index &= 0xFE;
       }
 
-      self.fetch_entry_data[(i*2)+offset] = picture_bus.vram_read(0x8000 + (tile_index * 16 + ty) as Address + offset as Address);
+      self.fetch_entry_data[(i * 2) + offset] =
+        picture_bus.vram_read(0x8000 + (tile_index * 16 + ty) as Address + offset as Address);
+    }
+  }
+
+  fn load_sprite_tile(&mut self, line_sprites: Vec<usize>, lcd: &Lcd, picture_bus: &PictureBus) {
+    let oams = picture_bus.oam_ram();
+    for i in line_sprites {
+      let entry = &oams[i];
+      let sp_x = entry.x - 8 + (lcd.scroll_x % 8);
+
+      if is_between(sp_x, self.fetch_x, 8) || is_between(sp_x + 8, self.fetch_x, 8) {
+        //need to add entry
+        self.fetched_entrys[self.fetched_entry_count as usize] = *entry;
+        self.fetched_entry_count += 1;
+        if self.fetched_entry_count >= 3 {
+          //max checking 3 sprites on pixels
+          break;
+        }
+      }
     }
   }
 
@@ -159,14 +190,14 @@ impl PixelFiFo {
       return false;
     }
 
-    if self.fetch_x  < (8 -(lcd.scroll_x % 8)) {
+    if self.fetch_x < (8 - (lcd.scroll_x % 8)) {
       // Note: true or false??
       return true;
     }
     for i in 0..8 {
       let bit = 7 - i;
-      let hi = bit_eq(self.bgw_fetch_data[1], 1<< bit) as Byte;
-      let lo = bit_eq(self.bgw_fetch_data[2], 1<< bit) as Byte;
+      let hi = bit_eq(self.bgw_fetch_data[1], 1 << bit) as Byte;
+      let lo = bit_eq(self.bgw_fetch_data[2], 1 << bit) as Byte;
       let idx = hi | (lo << 1);
       let mut color = lcd.bg_colors[idx as usize];
 
@@ -185,8 +216,8 @@ impl PixelFiFo {
     true
   }
 
-  fn fetch_sprite_pixels(&self, lcd:&Lcd, p_color: u32, bg_color: Byte) -> u32 {
-    let mut color= p_color;
+  fn fetch_sprite_pixels(&self, lcd: &Lcd, p_color: u32, bg_color: Byte) -> u32 {
+    let mut color = p_color;
     for i in 0..self.fetched_entry_count as usize {
       let sp_x = self.fetched_entrys[i].x - 8 + lcd.scroll_x % 8;
       if sp_x + 8 < self.fifo_x {
@@ -205,15 +236,15 @@ impl PixelFiFo {
         bit = offset.0;
       }
 
-      let hi = bit_eq(self.fetch_entry_data[i * 2] ,1<<bit);
-      let lo = bit_eq(self.fetch_entry_data[i*2 + 1], 1<<bit);
+      let hi = bit_eq(self.fetch_entry_data[i * 2], 1 << bit);
+      let lo = bit_eq(self.fetch_entry_data[i * 2 + 1], 1 << bit);
 
       if !hi && !lo {
         continue;
       }
 
       if !self.fetched_entrys[i].priority() || bg_color == 0 {
-        let idx = (hi as Byte | ((lo as Byte )<< 1)) as usize;
+        let idx = (hi as Byte | ((lo as Byte) << 1)) as usize;
         color = if self.fetched_entrys[i].dmg() {
           lcd.sp2_colors[idx]
         } else {

@@ -150,6 +150,7 @@ impl Mapper for MBC1 {
     addr: Address,
     value: Byte,
   ) {
+    // use cart.vrom() ?
     self.character_ram[addr as usize - 0x8000] = value;
   }
 

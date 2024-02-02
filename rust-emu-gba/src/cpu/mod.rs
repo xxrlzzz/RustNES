@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use rust_emu_common::types::*;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +14,7 @@ use self::{
   gb_opcodes::{AddrMode, CondType, InstructionType, RegType},
 };
 
-use crate::interrupt::{INT_JOYPAD, INT_LCD, INT_SERIAL, INT_TIMER, INT_VBLANK};
+use crate::interrupt::{*};
 
 mod flag_const {
   use rust_emu_common::types::*;
@@ -133,16 +135,17 @@ impl GBCpu {
 
 
   #[allow(dead_code)]
-  pub fn step(&mut self) -> u32 {
+  pub fn step(&mut self) -> u8 {
     self.cycles += 1;
-    if self.skip_cycles > 0 {
-      return self.skip_cycles;
-    }
+    // if self.skip_cycles > 0 {
+    //   return self.skip_cycles;
+    // }
     // handle interrupt
-    if self.halt {
+    let cycle = if self.halt {
       if self.int_flags != 0 {
         self.halt = false;
       }
+      1
     } else {
       let mut inst = self.fetch_instruction();
       if let Some(data) = self.fetch_data(&inst) {
@@ -150,7 +153,8 @@ impl GBCpu {
       }
       // debug print
       self.execute(inst);
-    }
+      inst.cycles
+    };
 
     if self.int_master_enabled {
       self.handle_interrupts();
@@ -160,7 +164,8 @@ impl GBCpu {
     if self.enable_ime {
       self.int_master_enabled = true;
     }
-    return self.skip_cycles;
+    // return self.skip_cycles;
+    cycle
   }
 
   fn check_interrupt(&mut self, addr: Byte, int_flag: Byte) -> bool {
@@ -181,6 +186,10 @@ impl GBCpu {
       || self.check_interrupt(0x50, INT_TIMER)
       || self.check_interrupt(0x58, INT_SERIAL)
       || self.check_interrupt(0x60, INT_JOYPAD);
+  }
+
+  pub(crate) fn trigger_interrupt(&mut self, interrupt: Byte) {
+    self.int_flags |= interrupt;
   }
 
   fn fetch_instruction(&mut self) -> Instruction {
@@ -717,7 +726,7 @@ impl GBCpu {
       self.write_bus(target, data);
       data
     } else {
-      let data = self.read_reg(inst.reg_1) - 1;
+      let data = self.read_reg(inst.reg_1).overflowing_sub(1).0;
       self.set_reg(inst.reg_1, data);
       self.read_reg(inst.reg_1) as Byte
     };
@@ -926,7 +935,8 @@ impl GBCpu {
 
   #[inline]
   fn push_stack(&mut self, value: Byte) {
-    self.r_sp -= 1;
+    // self.r_sp -= 1;
+    self.r_sp = self.r_sp.overflowing_sub(1).0;
     self.write_bus(self.r_sp, value)
   }
 

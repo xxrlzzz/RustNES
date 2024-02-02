@@ -4,7 +4,6 @@ use log::{error, warn};
 use rust_emu_common::controller::key_binding_parser::KeyType;
 use rust_emu_common::controller::Controller;
 use rust_emu_common::mapper::Mapper;
-use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::sync::mpsc::Sender;
@@ -40,20 +39,14 @@ pub trait RegisterHandler {
   fn dma(&mut self, page: *const Byte) -> bool;
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct MainBus {
-  #[serde(with = "serde_bytes")]
   ram: Vec<Byte>,
-  #[serde(with = "serde_bytes")]
   ext_ram: Vec<Byte>,
   has_ext_ram: bool,
-  #[serde(skip)]
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
-  #[serde(skip)]
   registers: Vec<Arc<Mutex<dyn RegisterHandler>>>,
-  #[serde(skip)]
   control1: Controller,
-  #[serde(skip)]
   control2: Controller,
 
   skip_dma_cycles: bool,

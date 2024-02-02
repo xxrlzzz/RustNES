@@ -4,19 +4,19 @@ use super::YRES;
 
 #[repr(u8)]
 pub(crate) enum LcdMode {
-  hblank,
-  vblank,
-  oam,
-  transfer,
+  Hblank,
+  Vblank,
+  Oam,
+  Transfer,
 }
 
 impl From<u8> for LcdMode {
   fn from(value: u8) -> Self {
     match value {
-      0 => LcdMode::hblank,
-      1 => LcdMode::vblank,
-      2 => LcdMode::oam,
-      3 => LcdMode::transfer,
+      0 => LcdMode::Hblank,
+      1 => LcdMode::Vblank,
+      2 => LcdMode::Oam,
+      3 => LcdMode::Transfer,
       _ => panic!("Invalid LCD mode: {}", value),
     }
   }
@@ -25,29 +25,29 @@ impl From<u8> for LcdMode {
 impl Into<u8> for LcdMode {
   fn into(self) -> u8 {
     match self {
-      LcdMode::hblank => 0,
-      LcdMode::vblank => 1,
-      LcdMode::oam => 2,
-      LcdMode::transfer => 3,
+      LcdMode::Hblank => 0,
+      LcdMode::Vblank => 1,
+      LcdMode::Oam => 2,
+      LcdMode::Transfer => 3,
     }
   }
 }
 
 #[repr(u8)]
 pub(crate) enum StatSrc {
-    hblank,
-    vblank,
-    oam,
-    lyc,
+    Hblank,
+    Vblank,
+    Oam,
+    Lyc,
 }
 
 impl From<u8> for StatSrc {
   fn from(value: u8) -> Self {
     match value {
-      0x0F=> StatSrc::hblank,
-      0x10 => StatSrc::vblank,
-      0x20=> StatSrc::oam,
-      0x40 => StatSrc::lyc,
+      0x0F=> StatSrc::Hblank,
+      0x10 => StatSrc::Vblank,
+      0x20=> StatSrc::Oam,
+      0x40 => StatSrc::Lyc,
       _ => panic!("Invalid LCD mode: {}", value),
     }
   }
@@ -56,14 +56,47 @@ impl From<u8> for StatSrc {
 impl Into<u8> for StatSrc {
   fn into(self) -> u8 {
     match self {
-      StatSrc::hblank => 0xF,
-      StatSrc::vblank => 0x10,
-      StatSrc::oam => 0x20,
-      StatSrc::lyc => 0x40,
+      StatSrc::Hblank => 0xF,
+      StatSrc::Vblank => 0x10,
+      StatSrc::Oam => 0x20,
+      StatSrc::Lyc => 0x40,
     }
   }
 }
 
+#[derive(Default)]
+pub(crate) struct Dma {
+  pub(crate) active: bool,
+  pub(crate) byte: Byte,
+  pub(crate) value: Byte,
+  pub(crate) start_delay: Byte
+}
+
+impl Dma {
+  pub fn start(&mut self, start_value: Byte) {
+    self.active = true;
+    self.byte = 0;
+    self.value = start_value;
+    self.start_delay = 2;
+  }
+
+  pub fn step(&mut self) -> Option<(Byte, Byte)>{
+    if !self.active {
+      return None;
+    }
+
+    if self.start_delay!=0 {
+      self.start_delay -=1;
+      return None;
+    }
+
+    // ppu oam _write
+    let data = (self.value, self.byte);
+    self.byte += 1;
+    self.active = self.byte < 0xA0;
+    Some(data)
+  }
+}
 
 #[derive(Default)]
 pub(crate) struct Lcd {
@@ -74,7 +107,7 @@ pub(crate) struct Lcd {
   pub scroll_x: Byte,
   pub ly: Byte,
   pub ly_compare: Byte,
-  dma: Byte,
+  dma_value: Byte,
   bg_palette: Byte,
   obj_palette: [Byte; 2],
   pub win_y: Byte,
@@ -84,6 +117,8 @@ pub(crate) struct Lcd {
   pub bg_colors: [u32; 4],
   pub sp1_colors: [u32; 4],
   pub sp2_colors: [u32; 4],
+
+  pub dma: Dma,
 }
 
 static COLORS_DEFAULT: [u32; 4] = [0xFFFFFFFF, 0xFFAAAAAA, 0xFF555555, 0xFF000000];
@@ -97,7 +132,7 @@ impl Lcd {
       scroll_x: 0,
       ly: 0,
       ly_compare: 0,
-      dma: 0,
+      dma_value: 0,
       bg_palette: 0xFC,
       obj_palette: [0xFF; 2],
       win_y: 0,
@@ -105,6 +140,8 @@ impl Lcd {
       bg_colors: COLORS_DEFAULT,
       sp1_colors: COLORS_DEFAULT,
       sp2_colors: COLORS_DEFAULT,
+
+      dma: Dma::default()
     }
   }
 
@@ -115,7 +152,7 @@ impl Lcd {
       0x2 => self.scroll_y,
       0x3 => self.scroll_x,
       0x4 => self.ly_compare,
-      0x5 => self.dma,
+      0x5 => self.dma_value,
       0x6 => self.bg_palette,
       0x7 => self.obj_palette[0],
       0x8 => self.obj_palette[1],
@@ -155,7 +192,7 @@ impl Lcd {
         self.ly_compare = data;
       }
       0x5 => {
-        self.dma = data;
+        self.dma_value = data;
       }
       0x6 => {
         self.bg_palette = data;
@@ -181,7 +218,7 @@ impl Lcd {
   }
 
   fn dma_start(&mut self, data: Byte) {
-    // TODO
+    self.dma.start(data)
   }
 
   pub(crate) fn bgw_enable(&self) -> bool {

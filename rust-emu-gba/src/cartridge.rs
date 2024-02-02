@@ -34,7 +34,7 @@ impl GBACartridge {
   pub fn new() -> Self {
     Self {
       prg_rom: Vec::new(),
-      chr_rom: Vec::new(),
+      chr_rom: Vec::with_capacity(0x2000),
       title: [0; 16],
       new_lic_code: [0; 2],
       sgb_flag: 0,
@@ -95,6 +95,7 @@ impl GBACartridge {
       return false;
     }
     file_reader.by_ref().take(self.prg_rom.capacity() as u64).read_to_end(&mut self.prg_rom).expect("Read ROM file content failed");
+    // self.chr_rom.extend(std::iter::repeat(0).take(0x2000));
     true
   }
 }

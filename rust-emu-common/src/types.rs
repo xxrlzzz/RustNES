@@ -8,6 +8,11 @@ pub fn bit_eq<T: std::ops::BitAnd<Output = T> + PartialEq + Copy>(a: T, b: T) ->
   return (a & b) == b;
 }
 
+#[inline]
+pub fn is_between<T: PartialOrd + Copy + std::ops::Add<Output = T>>(a: T, b: T, c: T) -> bool {
+  b <= a && a < b + c
+}
+
 mod test {
   use crate::types::bit_eq;
 
