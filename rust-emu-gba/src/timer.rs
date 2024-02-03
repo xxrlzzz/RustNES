@@ -20,6 +20,7 @@ impl Timer {
   pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
     Self {
       message_sx: Some(message_sx),
+      div: 0xABCC,
       ..Default::default()
     }
   }

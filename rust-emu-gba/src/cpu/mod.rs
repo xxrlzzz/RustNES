@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use rust_emu_common::types::*;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +5,7 @@ mod gb_opcodes;
 
 use gb_opcodes::Instruction;
 
-use crate::bus::MainBus;
+use crate::{bus::MainBus, cpu::flag_const::ZERO};
 
 use self::{
   flag_const::{CARRY, HALF_CARRY, SUBTRACTION},
@@ -71,14 +69,14 @@ impl GBCpu {
         cycles: 0,
         r_pc: 0x100,
         r_sp: 0xFFFE,
-        r_a: 0xB0,
-        r_f: 0x01,
-        r_b: 0x13,
-        r_c: 0x00,
-        r_d: 0xD8,
-        r_e: 0x00,
-        r_h: 0x4D,
-        r_l: 0x01,
+        r_a: 0x01,
+        r_f: 0xB0,
+        r_b: 0x00,
+        r_c: 0x13,
+        r_d: 0x00,
+        r_e: 0xD8,
+        r_h: 0x01,
+        r_l: 0x4D,
         cur_op: 0,
         cur_inst: Instruction::default(),
         fetched_data: 0,
@@ -110,14 +108,14 @@ impl GBCpu {
     self.cycles = 0;
     self.r_pc = 0x100;
     self.r_sp = 0xFFFE;
-    self.r_a = 0xB0;
-    self.r_f =0x01;
-    self.r_b = 0x13;
-    self.r_c = 0x00;
-    self.r_d = 0xD8;
-    self.r_e = 0x00;
-    self.r_h = 0x4D;
-    self.r_l = 0x01;
+    self.r_a = 0x01;
+    self.r_f =0xBD;
+    self.r_b = 0x00;
+    self.r_c = 0x13;
+    self.r_d = 0x00;
+    self.r_e = 0xD8;
+    self.r_h = 0x01;
+    self.r_l = 0x4D;
     self.cur_op = 0;
     self.cur_inst = Instruction::default();
     self.fetched_data = 0;
@@ -136,7 +134,7 @@ impl GBCpu {
 
   #[allow(dead_code)]
   pub fn step(&mut self) -> u8 {
-    self.cycles += 1;
+    // self.cycles += 1;
     // if self.skip_cycles > 0 {
     //   return self.skip_cycles;
     // }
@@ -145,14 +143,22 @@ impl GBCpu {
       if self.int_flags != 0 {
         self.halt = false;
       }
+      self.cycles += 1;
       1
     } else {
+      let pc = self.r_pc;
       let mut inst = self.fetch_instruction();
       if let Some(data) = self.fetch_data(&inst) {
         inst.param = data;
+        self.fetched_data = data;
+      } else {
+        // 02B6:
+        // inst.param = self.fetched_data;
       }
       // debug print
-      self.execute(inst);
+      self.execute(&mut inst);
+      self.cycles += inst.cycles as u32;
+      // self.debug_print(pc, inst);
       inst.cycles
     };
 
@@ -168,11 +174,27 @@ impl GBCpu {
     cycle
   }
 
+  fn debug_flag(&self) -> String {
+    format!("{}{}{}{}", 
+      if bit_eq(self.r_f, ZERO) {'Z'} else {'-'},
+      if bit_eq(self.r_f, SUBTRACTION) {'N'} else {'-'},
+      if bit_eq(self.r_f, HALF_CARRY) {'H'} else {'-'},
+      if bit_eq(self.r_f, CARRY) {'C'} else {'-'}, )
+  }
+
+  fn debug_print(&self, pc: Address, inst: Instruction) {
+    log::info!("{:08X} - {:04X}: ({:02X} {:04X} {:02X} {:02X}) A: {:02X} F: {} BC: {:02X}{:02X} DE: {:02X}{:02X} HL: {:02X}{:02X}",
+      self.cycles * 4, pc, self.cur_op, inst.param,
+      self.main_bus.read(pc+1), self.main_bus.read(pc+2),
+      self.r_a, self.debug_flag(), self.r_b,self.r_c, self.r_d, self.r_e, self.r_h, self.r_l);
+  }
+
   fn check_interrupt(&mut self, addr: Byte, int_flag: Byte) -> bool {
-    if bit_eq(self.int_flags, int_flag) || bit_eq(self.ie_register, int_flag) {
+    if bit_eq(self.int_flags, int_flag) && bit_eq(self.ie_register, int_flag) {
       self.push_stack_16(self.r_pc);
       self.r_pc = addr as Address;
 
+      self.int_flags &= !int_flag;
       self.halt = false;
       self.int_master_enabled = false;
       return true;
@@ -199,6 +221,7 @@ impl GBCpu {
   }
 
   fn fetch_data(&mut self, inst: &Instruction) -> Option<Address> {
+    self.dist_in_mem = false;
     match inst.mode {
       AddrMode::IMP => None,
       AddrMode::R => Some(self.read_reg(inst.reg_1)),
@@ -311,35 +334,35 @@ impl GBCpu {
     }
   }
 
-  fn execute(&mut self, inst: Instruction) {
+  fn execute(&mut self, inst:&mut Instruction) {
     match inst.i_type {
-      InstructionType::LD => self.inst_ld(inst),
-      InstructionType::LDH => self.inst_ldh(inst),
+      InstructionType::LD => self.inst_ld(*inst),
+      InstructionType::LDH => self.inst_ldh(*inst),
       InstructionType::JP => self.inst_jp(inst),
       InstructionType::JR => self.inst_jr(inst),
       InstructionType::CALL => self.inst_call(inst),
-      InstructionType::RST => self.inst_rst(inst),
+      InstructionType::RST => self.inst_rst(*inst),
       InstructionType::RET => self.inst_ret(inst),
       InstructionType::RETI => self.inst_reti(inst),
-      InstructionType::POP => self.inst_pop(inst),
-      InstructionType::PUSH => self.inst_push(inst),
-      InstructionType::INC => self.inst_inc(inst),
-      InstructionType::DEC => self.inst_dec(inst),
-      InstructionType::SUB => self.inst_sub(inst),
-      InstructionType::SBC => self.inst_sbc(inst),
-      InstructionType::ADC => self.inst_adc(inst),
-      InstructionType::ADD => self.inst_add(inst),
+      InstructionType::POP => self.inst_pop(*inst),
+      InstructionType::PUSH => self.inst_push(*inst),
+      InstructionType::INC => self.inst_inc(*inst),
+      InstructionType::DEC => self.inst_dec(*inst),
+      InstructionType::SUB => self.inst_sub(*inst),
+      InstructionType::SBC => self.inst_sbc(*inst),
+      InstructionType::ADC => self.inst_adc(*inst),
+      InstructionType::ADD => self.inst_add(*inst),
       InstructionType::DAA => self.inst_daa(),
       InstructionType::CPL => self.inst_cpl(),
       InstructionType::SCF => self.inst_scf(),
       InstructionType::CCF => self.inst_ccf(),
       InstructionType::HALT => self.inst_halt(),
       InstructionType::RRA => self.inst_rra(),
-      InstructionType::AND => self.inst_and(inst),
-      InstructionType::XOR => self.inst_xor(inst),
-      InstructionType::OR => self.inst_or(inst),
-      InstructionType::CP => self.inst_cp(inst),
-      InstructionType::DI => {self.int_master_enabled = true;},
+      InstructionType::AND => self.inst_and(*inst),
+      InstructionType::XOR => self.inst_xor(*inst),
+      InstructionType::OR => self.inst_or(*inst),
+      InstructionType::CP => self.inst_cp(*inst),
+      InstructionType::DI => {self.int_master_enabled = false;},
       InstructionType::EI => {self.enable_ime = true;},
       InstructionType::STOP => self.inst_stop(),
       InstructionType::RLA => self.inst_rla(),
@@ -372,8 +395,9 @@ impl GBCpu {
     }
   }
 
-  fn inst_cb(&mut self, inst: Instruction) {
+  fn inst_cb(&mut self, inst: &mut Instruction) {
     let op = inst.param;
+    inst.cycles += 2;
     let reg = match op & 0x7 {
       0x0 => RegType::B,
       0x1 => RegType::C,
@@ -381,7 +405,10 @@ impl GBCpu {
       0x3 => RegType::E,
       0x4 => RegType::H,
       0x5 => RegType::L,
-      0x6 => RegType::HL,
+      0x6 => {
+        inst.cycles += 2;
+        RegType::HL
+      },
       0x7 => RegType::A,
       _ => RegType::NONE,
     };
@@ -546,12 +573,12 @@ impl GBCpu {
   fn inst_daa(&mut self) {
     let mut u = 0;
     let mut fc = false;
-    let n_flag = self.r_f & SUBTRACTION == SUBTRACTION;
+    let n_flag = bit_eq(self.r_f, SUBTRACTION);
 
-    if self.r_f & HALF_CARRY == HALF_CARRY || (!n_flag && (self.r_a & 0xF) > 9) {
+    if bit_eq(self.r_f , HALF_CARRY) || (!n_flag && (self.r_a & 0xF) > 9) {
       u = 6;
     }
-    if self.r_f & CARRY == CARRY || (!n_flag && self.r_a > 0x99) {
+    if bit_eq(self.r_f, CARRY) || (!n_flag && self.r_a > 0x99) {
       u |= 0x60;
       fc = true;
     }
@@ -613,6 +640,10 @@ impl GBCpu {
     let ret = (self.r_a as Address).overflowing_sub(inst.param);
     let h = (self.r_a as Address) & 0xF < inst.param & 0xF;
     self.set_flags(Some(ret.0 == 0), Some(true), Some(h), Some(ret.1))
+
+    // let ret = (self.r_a as i16) - (inst.param as i16);
+    // let h = (self.r_a as i16) & 0xF < (inst.param as i16) & 0xF;
+    // self.set_flags(Some(ret == 0), Some(true), Some(h), Some(ret < 0))
   }
 
   fn inst_ld(&mut self, inst: Instruction) {
@@ -633,7 +664,7 @@ impl GBCpu {
       let cflag = ((self.read_reg(inst.reg_2) & 0xFF) + (inst.param & 0xFF)) >= 0x100;
 
       self.set_flags(None, None, Some(hflag), Some(cflag));
-      self.set_reg(inst.reg_1, self.read_reg(inst.reg_2) + inst.param);
+      self.set_reg(inst.reg_1, (self.read_reg(inst.reg_2) as i16 + inst.param as i16) as Address);
       return;
     }
     self.set_reg(inst.reg_1, inst.param);
@@ -641,25 +672,33 @@ impl GBCpu {
 
   fn inst_ldh(&mut self, inst: Instruction) {
     if inst.reg_1 == RegType::A {
+      // log::info!("ldh read bus {:X} {:X}", 0xFF00 | inst.param, self.read_bus(0xFF00 | inst.param));
       self.set_reg(inst.reg_1, self.read_bus(0xFF00 | inst.param) as Address);
     } else {
       self.write_bus(self.mem_dis, self.read_reg(RegType::A) as Byte)
     }
-    self.skip_cycles += 1;
+    // self.skip_cycles += 1;
   }
 
-  fn inst_jp(&mut self, inst: Instruction) {
-    self.goto_addr(inst.cond, inst.param, false);
+  fn inst_jp(&mut self, inst:&mut Instruction) {
+    if self.goto_addr(inst.cond, inst.param, false) && inst.cond != CondType::NONE {
+      inst.cycles += 1;
+    }
   }
 
-  fn inst_jr(&mut self, inst: Instruction) {
-    let rel = inst.param & 0xFF;
-    let addr = self.r_pc + rel as Address;
-    self.goto_addr(inst.cond, addr, false);
+  fn inst_jr(&mut self, inst:&mut Instruction) {
+    let rel = ((inst.param & 0xFF) as i8) as i16;
+    let addr = self.r_pc as i16 + rel;
+    // log::info!("jr {} {} {}", addr ,rel, self.r_pc);
+    if self.goto_addr(inst.cond, addr as u16, false) && inst.cond != CondType::NONE {
+      inst.cycles += 1;
+    }
   }
 
-  fn inst_call(&mut self, inst: Instruction) {
-    self.goto_addr(inst.cond, inst.param, true);
+  fn inst_call(&mut self, inst:& mut Instruction) {
+    if self.goto_addr(inst.cond, inst.param, true) {
+      inst.cycles += 3;
+    }
   }
 
   fn inst_rst(&mut self, inst: Instruction) {
@@ -667,21 +706,24 @@ impl GBCpu {
     self.goto_addr(inst.cond, inst.param, true);
   }
 
-  fn inst_ret(&mut self, inst: Instruction) {
-    if inst.cond != CondType::NONE {
-      self.skip_cycles += 1;
-    }
+  fn inst_ret(&mut self, inst:&mut Instruction) {
+    // if inst.cond != CondType::NONE {
+    //   self.skip_cycles += 1;
+    // }
 
     if check_cond(self.r_f, inst.cond) {
       let lo = self.pull_stack();
       let hi = self.pull_stack();
       self.r_pc = (hi as Address) << 8 | lo as Address;
 
-      self.skip_cycles += 3;
+      // self.skip_cycles += 3;
+      if inst.cond != CondType::NONE {
+        inst.cycles += 3;
+      }
     }
   }
 
-  fn inst_reti(&mut self, inst: Instruction) {
+  fn inst_reti(&mut self, inst:&mut Instruction) {
     self.int_master_enabled = true;
     self.inst_ret(inst);
   }
@@ -716,7 +758,7 @@ impl GBCpu {
     if bit_eq(self.cur_op, 0x03) {
       return;
     }
-    self.set_flags(Some(val == 0), Some(false), Some(!bit_eq(val, 0x0F)), None)
+    self.set_flags(Some(val == 0), Some(false), Some((val & 0x0F) == 0), None)
   }
 
   fn inst_dec(&mut self, inst: Instruction) {
@@ -794,7 +836,7 @@ impl GBCpu {
     self.set_flags(z, Some(false), h, c)
   }
 
-  fn goto_addr(&mut self, cond: CondType, addr: Address, push_pc: bool) {
+  fn goto_addr(&mut self, cond: CondType, addr: Address, push_pc: bool) -> bool {
     if check_cond(self.r_f, cond) {
       if push_pc {
         self.skip_cycles += 2;
@@ -803,6 +845,11 @@ impl GBCpu {
 
       self.r_pc = addr;
       self.skip_cycles += 1;
+      log::info!("jump {:04X}", addr);
+      true
+    } else {
+      log::info!("not jump");
+      false
     }
   }
 
@@ -817,7 +864,7 @@ impl GBCpu {
 
   fn set_flags(&mut self, z: Option<bool>, n: Option<bool>, h: Option<bool>, c: Option<bool>) {
     let mut set_mask = 0;
-    let mut unset_mask = 0xFF;
+    let mut unset_mask = 0;
     if let Some(z) = z {
       if z {
         set_mask |= flag_const::ZERO;
@@ -870,20 +917,20 @@ impl GBCpu {
       RegType::SP => self.r_sp = data,
       RegType::PC => self.r_pc = data,
       RegType::AF => {
-        self.r_f = ((data & 0xFF00) >> 8) as Byte;
-        self.r_a = (data & 0xFF) as Byte;
+        self.r_a = ((data & 0xFF00) >> 8) as Byte;
+        self.r_f = (data & 0xFF) as Byte;
       }
       RegType::BC => {
-        self.r_c = ((data & 0xFF00) >> 8) as Byte;
-        self.r_b = (data & 0xFF) as Byte;
+        self.r_b = ((data & 0xFF00) >> 8) as Byte;
+        self.r_c = (data & 0xFF) as Byte;
       }
       RegType::DE => {
-        self.r_e = ((data & 0xFF00) >> 8) as Byte;
-        self.r_d = (data & 0xFF) as Byte;
+        self.r_d = ((data & 0xFF00) >> 8) as Byte;
+        self.r_e = (data & 0xFF) as Byte;
       }
       RegType::HL => {
-        self.r_l = ((data & 0xFF00) >> 8) as Byte;
-        self.r_h = (data & 0xFF) as Byte;
+        self.r_h = ((data & 0xFF00) >> 8) as Byte;
+        self.r_l = (data & 0xFF) as Byte;
       }
       RegType::NONE => (),
     }
@@ -901,10 +948,10 @@ impl GBCpu {
       RegType::L => self.r_l.into(),
       RegType::SP => self.r_sp,
       RegType::PC => self.r_pc,
-      RegType::AF => (self.r_f as Address) << 8 | self.r_a as Address,
-      RegType::BC => (self.r_c as Address) << 8 | self.r_b as Address,
-      RegType::DE => (self.r_e as Address) >> 8 | self.r_d as Address,
-      RegType::HL => (self.r_l as Address) >> 8 | self.r_h as Address,
+      RegType::AF => (self.r_a as Address) << 8 | self.r_f as Address,
+      RegType::BC => (self.r_b as Address) << 8 | self.r_c as Address,
+      RegType::DE => (self.r_d as Address) << 8 | self.r_e as Address,
+      RegType::HL => (self.r_h as Address) << 8 | self.r_l as Address,
       RegType::NONE => 0,
     }
   }
@@ -948,8 +995,9 @@ impl GBCpu {
 
   #[inline]
   fn pull_stack(&mut self) -> Byte {
+    let ret = self.read_bus(self.r_sp);
     self.r_sp += 1;
-    self.read_bus(self.r_sp)
+    ret
   }
 
   #[inline]

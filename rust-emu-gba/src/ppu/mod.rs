@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc, sync::mpsc};
 
-use image::{Rgba, RgbaImage, GenericImage};
-use rust_emu_common::{list::List, mapper::Mapper, types::*};
-use serde::{Deserialize, Serialize};
 use crate::{bus::RegisterHandler, instance::Message, interrupt, picture_bus::PictureBus};
+use image::{GenericImage, Rgba, RgbaImage};
+use rust_emu_common::{mapper::Mapper, types::*};
+use serde::{Deserialize, Serialize};
 
 use self::{
   lcd::{Lcd, LcdMode, StatSrc},
@@ -34,14 +34,14 @@ pub struct OamEntry {
   pub(crate) flag: Byte,
 }
 impl PartialEq for OamEntry {
-    fn eq(&self, other: &Self) -> bool {
-      self.x == other.x
-    }
+  fn eq(&self, other: &Self) -> bool {
+    self.x == other.x
+  }
 }
 impl PartialOrd for OamEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.x.partial_cmp(&other.x)
-    }
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    self.x.partial_cmp(&other.x)
+  }
 }
 
 impl OamEntry {
@@ -93,7 +93,7 @@ pub(crate) struct GBAPpu {
   message_sx: Option<mpsc::Sender<Message>>, // interrupt channel
 }
 
-impl  GBAPpu  {
+impl GBAPpu {
   pub fn new(message_sx: mpsc::Sender<Message>) -> Self {
     // let mut line_entry_array = vec![];
     // for _ in 0..10 {
@@ -127,7 +127,9 @@ impl  GBAPpu  {
     }
     if self.line_ticks % 4 == 0 {
       if let Some((value, byte)) = self.lcd.dma.step() {
-        let write = self.picture_bus.read(value as Address * 0x100 + byte as Address);
+        let write = self
+          .picture_bus
+          .read(value as Address * 0x100 + byte as Address);
         self.picture_bus.oam_write(byte as Address, write)
       }
     }
@@ -177,6 +179,7 @@ impl  GBAPpu  {
       self.lcd.ly = 0;
       self.window_line = 0;
 
+      // log::info!("clear ly");
       // self.send_message(Message::PpuRender(self.image.clone()))
     }
 
@@ -222,7 +225,7 @@ impl  GBAPpu  {
         //max 10 sprites per line...
         break;
       }
-      if is_between(cur_y+ 16, entry.y, sprite_height) {
+      if is_between(cur_y + 16, entry.y, sprite_height) {
         //this sprite is on the current line.
         // TODO check this is right
         self.line_sprite_array.push(i);
@@ -231,6 +234,7 @@ impl  GBAPpu  {
   }
 
   fn increment_ly(&mut self) {
+    // log::info!("ppu increment ly {}", self.lcd.ly);
     if self.lcd.window_visible()
       && self.lcd.ly >= self.lcd.win_y
       && self.lcd.ly <= self.lcd.win_y + YRES
@@ -244,7 +248,12 @@ impl  GBAPpu  {
       self.lcd.set_lyc(true);
 
       if self.lcd.stat_int(StatSrc::Lyc) {
-        self.message_sx.as_ref().unwrap().send(Message::CpuInterrupt(interrupt::INT_LCD)).unwrap();
+        self
+          .message_sx
+          .as_ref()
+          .unwrap()
+          .send(Message::CpuInterrupt(interrupt::INT_LCD))
+          .unwrap();
       }
     } else {
       self.lcd.set_lyc(false);
@@ -257,19 +266,30 @@ impl  GBAPpu  {
     self.pfc.tile_y = (self.pfc.map_y % 8) * 2;
 
     if !bit_eq(self.line_ticks, 1) {
-      self.pfc.fetch(&mut self.lcd, &self.picture_bus, self.window_line, self.line_sprite_array.clone());
+      self.pfc.fetch(
+        &mut self.lcd,
+        &self.picture_bus,
+        self.window_line,
+        self.line_sprite_array.clone(),
+      );
     }
-    if let Some((offset, pixel)) =  self.pfc.push_pixel(&self.lcd) {
-      // 
+    if let Some((offset, pixel)) = self.pfc.push_pixel(&self.lcd) {
       unsafe {
         // log::info!("ppu push pixel {} {:X}", offset, pixel);
-        let color = Rgba([(pixel & 0xC0 >> 6) as u8, (pixel & 0x30 >> 4) as u8, (pixel & 0x0C >> 2) as u8, (pixel & 0x03) as u8]);
-        self.image.unsafe_put_pixel(offset as u32, self.lcd.ly as u32, color);
+        let color = Rgba([
+          (pixel & 0xC0 >> 6) as u8,
+          (pixel & 0x30 >> 4) as u8,
+          (pixel & 0x0C >> 2) as u8,
+          (pixel & 0x03) as u8,
+        ]);
+        self
+          .image
+          .unsafe_put_pixel(offset as u32, self.lcd.ly as u32, color);
       }
     }
   }
 
-  fn send_message(&mut self, msg : Message) {
+  fn send_message(&mut self, msg: Message) {
     self.message_sx.as_ref().unwrap().send(msg).unwrap();
   }
 
@@ -278,44 +298,38 @@ impl  GBAPpu  {
   }
 }
 
-impl<'a>  RegisterHandler for GBAPpu  {
-    fn read(&mut self, address: Address) -> Option<Byte> {
-      match address {
-          0xFE00..=0xFE9F => {
-            if self.lcd.dma.active {
-              return Some(0xFF);
-            }
-            Some(self.picture_bus.oam_read(address))
-          },
-          0xFF40..=0xFF4B => {
-            Some(self.lcd.read(address))
-          }
-          _ => {
-            None
-          }
+impl<'a> RegisterHandler for GBAPpu {
+  fn read(&mut self, address: Address) -> Option<Byte> {
+    match address {
+      0xFE00..=0xFE9F => {
+        if self.lcd.dma.active {
+          return Some(0xFF);
+        }
+        Some(self.picture_bus.oam_read(address))
       }
+      0xFF40..=0xFF4B => Some(self.lcd.read(address)),
+      _ => None,
     }
+  }
 
-    fn write(&mut self, address: Address, value: Byte) -> bool {
-      match address {
-          0xFE00..=0xFE9F => {
-            if self.lcd.dma.active {
-              return true;
-            }
-            self.picture_bus.oam_write(address, value);
-            true
-          },
-          0xFF40..=0xFF4B => {
-            self.lcd.write(address, value);
-            true
-          }
-          _ => {
-            false
-          }
+  fn write(&mut self, address: Address, value: Byte) -> bool {
+    match address {
+      0xFE00..=0xFE9F => {
+        if self.lcd.dma.active {
+          return true;
+        }
+        self.picture_bus.oam_write(address, value);
+        true
       }
+      0xFF40..=0xFF4B => {
+        self.lcd.write(address, value);
+        true
+      }
+      _ => false,
     }
+  }
 
-    fn dma(&mut self, _: *const Byte) -> bool {
-      false
-    }
+  fn dma(&mut self, _: *const Byte) -> bool {
+    false
+  }
 }

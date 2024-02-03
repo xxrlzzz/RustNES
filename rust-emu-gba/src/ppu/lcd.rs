@@ -146,18 +146,19 @@ impl Lcd {
   }
 
   pub fn read(&self, addr: Address) -> Byte {
-    match addr {
+    match addr - 0xFF40{
       0x0 => self.lcdc,
       0x1 => self.lcds,
       0x2 => self.scroll_y,
       0x3 => self.scroll_x,
-      0x4 => self.ly_compare,
-      0x5 => self.dma_value,
-      0x6 => self.bg_palette,
-      0x7 => self.obj_palette[0],
-      0x8 => self.obj_palette[1],
-      0x9 => self.win_x,
-      0xA => self.win_y,
+      0x4 => self.ly,
+      0x5 => self.ly_compare,
+      0x6 => self.dma_value,
+      0x7 => self.bg_palette,
+      0x8 => self.obj_palette[0],
+      0x9 => self.obj_palette[1],
+      0xA => self.win_x,
+      0xB => self.win_y,
       _ => 0,
     }
   }
@@ -175,6 +176,7 @@ impl Lcd {
   }
 
   pub fn write(&mut self, addr: Address, data: Byte) {
+    log::info!("lcd write {:04X} {:02X}", addr, data);
     match addr - 0xFF40 {
       0x0 => {
         self.lcdc = data;
@@ -189,28 +191,31 @@ impl Lcd {
         self.scroll_x = data;
       }
       0x4 => {
-        self.ly_compare = data;
+        self.ly = data;
       }
       0x5 => {
-        self.dma_value = data;
+        self.ly_compare = data;
       }
       0x6 => {
-        self.bg_palette = data;
+        self.dma_value = data;
         self.dma_start(data);
       }
       0x7 => {
-        self.obj_palette[0] = data;
+        self.bg_palette = data;
         self.update_palette(data & 0xFC, 0);
       }
       0x8 => {
-        self.obj_palette[1] = data;
+        self.obj_palette[0] = data;
         self.update_palette(data & 0xFC, 1);
       }
       0x9 => {
-        self.win_x = data;
+        self.obj_palette[1] = data;
         self.update_palette(data & 0xFC, 2);
       }
       0xA => {
+        self.win_x = data;
+      }
+      0xB => {
         self.win_y = data;
       }
       _ => {}

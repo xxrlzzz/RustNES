@@ -89,67 +89,64 @@ impl MainBus {
   pub fn io_read(&self, addr: Address) -> Byte {
     // TODO
     match addr {
-        0xFF00 => {
-            // game pad
-            0xFF
-        },
-        0xFF01 => {
-            self.io_serial_data[0]
-        }
-        0xFF02 => {
-            self.io_serial_data[1]
-        }
-        0xFF04..=0xFF07 => {
-            // timer
-            self.registers[1].lock().unwrap().read(addr).unwrap()
-        }
-        0xFF0F => {
-            // interrupt
-            // log::warn!("interrupt read");
-            0xFF
-        }
-        0xFF10..=0xFF3F => {
-            // sound
-            0xFF
-        }
-        0xFF40..=0xFF48 => {
-            self.registers[0].lock().unwrap().read(addr).unwrap()
-        }
-        _ => {
-            // no impl
-            0
-        }
+      0xFF00 => {
+        // game pad
+        0xFF
+      }
+      0xFF01 => self.io_serial_data[0],
+      0xFF02 => self.io_serial_data[1],
+      0xFF04..=0xFF07 => {
+        // timer
+        self.registers[1].lock().unwrap().read(addr).unwrap()
+      }
+      0xFF0F => {
+        // interrupt
+        // log::warn!("interrupt read");
+        0xFF
+      }
+      0xFF10..=0xFF3F => {
+        // sound
+        0xFF
+      }
+      0xFF40..=0xFF4B => {
+        // ppu
+        self.registers[0].lock().unwrap().read(addr).unwrap()
+      }
+      _ => {
+        // no impl
+        0
+      }
     }
   }
 
   pub fn io_write(&mut self, addr: Address, value: Byte) {
     match addr {
-        0xFF00 => {
-            // game pad
-        },
-        0xFF01 => {
-            self.io_serial_data[0] = value;
-        }
-        0xFF02 => {
-            self.io_serial_data[1] = value;
-        }
-        0xFF04..=0xFF07 => {
-            // timer
-            self.registers[1].lock().unwrap().write(addr, value);
-        }
-        0xFF0F => {
-            // interrupt
-            // log::warn!("interrupt write {}", value);
-        }
-        0xFF10..=0xFF3F => {
-            // sound
-        }
-        0xFF40..=0xFF48 => {
-            self.registers[0].lock().unwrap().write(addr, value);
-        }
-        _ => {
-            // no impl
-        }
+      0xFF00 => {
+        // game pad
+      }
+      0xFF01 => {
+        self.io_serial_data[0] = value;
+      }
+      0xFF02 => {
+        self.io_serial_data[1] = value;
+      }
+      0xFF04..=0xFF07 => {
+        // timer
+        self.registers[1].lock().unwrap().write(addr, value);
+      }
+      0xFF0F => {
+        // interrupt
+        // log::warn!("interrupt write {}", value);
+      }
+      0xFF10..=0xFF3F => {
+        // sound
+      }
+      0xFF40..=0xFF4B => {
+        self.registers[0].lock().unwrap().write(addr, value);
+      }
+      _ => {
+        // no impl
+      }
     }
   }
 
