@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc, sync::mpsc};
 
-use crate::{bus::RegisterHandler, instance::Message, interrupt, picture_bus::PictureBus};
+use crate::{instance::Message, interrupt, picture_bus::PictureBus};
 use image::{GenericImage, Rgba, RgbaImage};
-use rust_emu_common::{mapper::Mapper, types::*};
+use rust_emu_common::{component::main_bus::RegisterHandler, mapper::Mapper, types::*};
 use serde::{Deserialize, Serialize};
 
 use self::{
@@ -18,7 +18,7 @@ static TICKS_PER_LINE: u16 = 456;
 static YRES: u8 = 144;
 static XRES: u8 = 160;
 
-#[derive(Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct OamEntry {
   pub(crate) y: Byte,
   pub(crate) x: Byte,
@@ -275,13 +275,13 @@ impl GBAPpu {
     }
     if let Some((offset, pixel)) = self.pfc.push_pixel(&self.lcd) {
       unsafe {
-        // log::info!("ppu push pixel {} {:X}", offset, pixel);
         let color = Rgba([
-          (pixel & 0xC0 >> 6) as u8,
-          (pixel & 0x30 >> 4) as u8,
-          (pixel & 0x0C >> 2) as u8,
-          (pixel & 0x03) as u8,
+          ((pixel & 0x00FF0000 )>> 16) as u8,
+          ((pixel & 0x0000FF00) >> 8) as u8,
+          (pixel & 0x000000FF) as u8,
+          ((pixel & 0xFF000000 )>> 24) as u8,
         ]);
+        // log::info!("ppu push pixel {:X} {} {:?}", pixel, offset, color);
         self
           .image
           .unsafe_put_pixel(offset as u32, self.lcd.ly as u32, color);

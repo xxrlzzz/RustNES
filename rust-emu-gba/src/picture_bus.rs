@@ -60,9 +60,9 @@ impl PictureBus {
     }
   }
 
-  pub(crate) fn vram_write(&mut self, addr: Address, data: Byte) {
-    self.mapper.as_mut().unwrap().borrow_mut().write_chr(addr, data);
-  }
+  // pub(crate) fn vram_write(&mut self, addr: Address, data: Byte) {
+  //   self.mapper.as_mut().unwrap().borrow_mut().write_chr(addr, data);
+  // }
 
   pub(crate) fn vram_read(&self, addr: Address) -> Byte {
     self.mapper.as_ref().unwrap().borrow().read_chr(addr)

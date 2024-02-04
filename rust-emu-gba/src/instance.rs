@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use image::RgbaImage;
 use rust_emu_common::{emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}, types::*};
 
-use crate::{bus::MainBus, cartridge::GBACartridge, cpu::GBCpu, mapper::create_mapper, ppu::GBAPpu, timer::Timer};
+use crate::{bus::GBAMainBus, cartridge::GBACartridge, cpu::GBCpu, mapper::create_mapper, ppu::GBAPpu, timer::Timer};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -31,7 +31,7 @@ pub fn init_rom_from_path(
   if !cartridge.load_from_file(rom_path) {
     return None;
   }
-  GBAInstance::init_rom(cartridge)
+  GBAInstance::init_rom(cartridge, runtime_config)
 }
 
 
@@ -136,12 +136,12 @@ impl<'a> Instance for GBAInstance {
 }
 
 impl GBAInstance {
-  pub fn init_rom(cart: GBACartridge) -> Option<Box<Self>> {
+  pub fn init_rom(cart: GBACartridge, runtime_config: &RuntimeConfig) -> Option<Box<Self>> {
     let (message_sx, message_rx) = mpsc::channel::<Message>();    
     let ppu = Arc::new(Mutex::new(GBAPpu::new(message_sx.clone())));
     let timer = Arc::new(Mutex::new(Timer::new(message_sx.clone())));
-    let mut main_bus = MainBus::new(ppu.clone(), timer.clone());
-    // main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
+    let mut main_bus = GBAMainBus::new(ppu.clone(), timer.clone());
+    main_bus.set_controller_keys(runtime_config.ctl1.clone());
 
     let mut cpu = GBCpu::new(main_bus);
     let mapper = create_mapper(cart);

@@ -1,8 +1,8 @@
 use ciborium::de::from_reader;
 use ciborium::ser::into_writer;
 use log::{error, warn};
+use rust_emu_common::component::main_bus::{MainBus, RegisterHandler};
 use rust_emu_common::controller::key_binding_parser::KeyType;
-use rust_emu_common::controller::Controller;
 use rust_emu_common::mapper::Mapper;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -12,6 +12,7 @@ use std::{cell::RefCell, rc::Rc};
 use rust_emu_common::types::*;
 
 use crate::apu::Apu;
+use crate::controller::NESController;
 use crate::cpu::InterruptType;
 use crate::mapper::factory::load_mapper;
 use crate::ppu::Ppu;
@@ -33,26 +34,20 @@ pub const APU_ADDR: IORegister = 0x4015;
 pub const JOY1: IORegister = 0x4016;
 pub const JOY2: IORegister = 0x4017;
 
-pub trait RegisterHandler {
-  fn read(&mut self, address: IORegister) -> Option<Byte>;
-  fn write(&mut self, address: IORegister, value: Byte) -> bool;
-  fn dma(&mut self, page: *const Byte) -> bool;
-}
-
 #[derive(Default)]
-pub struct MainBus {
+pub struct NESMainBus {
   ram: Vec<Byte>,
   ext_ram: Vec<Byte>,
   has_ext_ram: bool,
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
   registers: Vec<Arc<Mutex<dyn RegisterHandler>>>,
-  control1: Controller,
-  control2: Controller,
+  control1: NESController,
+  control2: NESController,
 
   skip_dma_cycles: bool,
 }
 
-impl MainBus {
+impl NESMainBus {
   pub fn new<'a>(apu: Arc<Mutex<Apu>>, ppu: Arc<Mutex<Ppu>>) -> Self {
     Self {
       ram: vec![0; 0x800],
@@ -60,8 +55,8 @@ impl MainBus {
       has_ext_ram: false,
       mapper: None,
       registers: vec![ppu, apu],
-      control1: Controller::new(),
-      control2: Controller::remote_controller(),
+      control1: NESController::new(),
+      control2: NESController::remote_controller(),
 
       skip_dma_cycles: false,
     }
@@ -115,8 +110,8 @@ impl MainBus {
       has_ext_ram: false,
       mapper: Some(mapper),
       registers: vec![ppu, apu],
-      control1: Controller::new(),
-      control2: Controller::new(),
+      control1: NESController::new(),
+      control2: NESController::new(),
       skip_dma_cycles,
     }
   }
@@ -140,7 +135,81 @@ impl MainBus {
     ret
   }
 
-  pub fn write(&mut self, addr: Address, value: Byte) {
+  #[inline]
+  pub fn save_read(&self, addr: Address) -> Byte {
+    match addr {
+      0x0000..=0x1fff => self.ram[(addr & 0x07ff) as usize],
+      0x2000..=0x401f => 0,
+      0x4020..=0x5fff => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
+      0x6000..=0x7fff => {
+        if self.has_ext_ram {
+          self.ext_ram[(addr - 0x6000) as usize]
+        } else {
+          0
+        }
+      }
+      _ => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
+    }
+  }
+
+  pub fn read_extra(&mut self, addr: Address) -> Byte {
+    let mapped_addr = if addr < 0x4000 {
+      // PPU registers, mirrored
+      addr & 0x2007
+    } else {
+      addr
+    };
+    return match mapped_addr {
+      JOY1 => self.control1.read(),
+      JOY2 => self.control2.read(),
+      _ => {
+        for reg in &mut self.registers {
+          if let Some(value) = reg.lock().unwrap().read(mapped_addr) {
+            return value;
+          }
+        }
+        warn!("Attempt to read at {:#x} without callback registered", addr);
+        0
+      }
+    };
+  }
+
+
+  #[inline]
+  pub fn read_addr(&mut self, addr: Address) -> Address {
+    self.read(addr) as Address
+  }
+
+  pub unsafe fn get_page_ptr(&self, page: Byte) -> Option<*const Byte> {
+    let addr = (page as usize) << 8;
+    if addr < 0x2000 {
+      let ptr = self.ram.as_ptr();
+      Some(ptr.add(addr & 0x7FF))
+    } else if addr < 0x4020 {
+      error!("Attempting to access register address memory");
+      None
+    } else if addr < 0x6000 {
+      error!("Not supported to access expansion ROM");
+      None
+    } else if addr < 0x8000 {
+      let ptr = self.ext_ram.as_ptr();
+      Some(ptr.add(addr - 0x6000))
+    } else {
+      None
+    }
+  }
+}
+
+impl MainBus for NESMainBus {
+  #[inline]
+  fn read(&mut self, addr: Address) -> Byte {
+    if addr < 0x4020 && addr > 0x2000 {
+      return self.read_extra(addr);
+    }
+    self.save_read(addr)
+  }
+
+  fn write(&mut self, addr: Address, value: Byte) {
     match addr {
       0x0000..=0x1fff => {
         self.ram[(addr & 0x07ff) as usize] = value;
@@ -203,74 +272,4 @@ impl MainBus {
     }
   }
 
-  #[inline]
-  pub fn save_read(&self, addr: Address) -> Byte {
-    match addr {
-      0x0000..=0x1fff => self.ram[(addr & 0x07ff) as usize],
-      0x2000..=0x401f => 0,
-      0x4020..=0x5fff => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
-      0x6000..=0x7fff => {
-        if self.has_ext_ram {
-          self.ext_ram[(addr - 0x6000) as usize]
-        } else {
-          0
-        }
-      }
-      _ => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
-    }
-  }
-
-  pub fn read_extra(&mut self, addr: Address) -> Byte {
-    let mapped_addr = if addr < 0x4000 {
-      // PPU registers, mirrored
-      addr & 0x2007
-    } else {
-      addr
-    };
-    return match mapped_addr {
-      JOY1 => self.control1.read(),
-      JOY2 => self.control2.read(),
-      _ => {
-        for reg in &mut self.registers {
-          if let Some(value) = reg.lock().unwrap().read(mapped_addr) {
-            return value;
-          }
-        }
-        warn!("Attempt to read at {:#x} without callback registered", addr);
-        0
-      }
-    };
-  }
-
-  #[inline]
-  pub fn read(&mut self, addr: Address) -> Byte {
-    if addr < 0x4020 && addr > 0x2000 {
-      return self.read_extra(addr);
-    }
-    self.save_read(addr)
-  }
-
-  #[inline]
-  pub fn read_addr(&mut self, addr: Address) -> Address {
-    self.read(addr) as Address
-  }
-
-  pub unsafe fn get_page_ptr(&self, page: Byte) -> Option<*const Byte> {
-    let addr = (page as usize) << 8;
-    if addr < 0x2000 {
-      let ptr = self.ram.as_ptr();
-      Some(ptr.add(addr & 0x7FF))
-    } else if addr < 0x4020 {
-      error!("Attempting to access register address memory");
-      None
-    } else if addr < 0x6000 {
-      error!("Not supported to access expansion ROM");
-      None
-    } else if addr < 0x8000 {
-      let ptr = self.ext_ram.as_ptr();
-      Some(ptr.add(addr - 0x6000))
-    } else {
-      None
-    }
-  }
 }

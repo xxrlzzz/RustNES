@@ -13,10 +13,10 @@ use std::{
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
-use rust_emu_common::types::*;
+use rust_emu_common::{component::main_bus::RegisterHandler, types::*};
 use crate::{
   bus::{
-    main_bus::{IORegister, RegisterHandler, APU_ADDR, JOY2},
+    main_bus::{APU_ADDR, JOY2},
     message_bus::Message,
   },
   cpu::InterruptType,
@@ -349,15 +349,15 @@ impl Apu {
 }
 
 impl RegisterHandler for Apu {
-  fn read(&mut self, address: IORegister) -> Option<Byte> {
+  fn read(&mut self, address: Address) -> Option<Byte> {
     match address {
       APU_ADDR => Some(self.read_status()),
       _ => None,
     }
   }
 
-  fn write(&mut self, address: IORegister, value: Byte) -> bool {
-    match address as Address {
+  fn write(&mut self, address: Address, value: Byte) -> bool {
+    match address {
       0x4000..=0x4013 | JOY2 | APU_ADDR => {
         self.write_register(address, value);
         true

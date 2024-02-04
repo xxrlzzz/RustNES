@@ -3,6 +3,7 @@ use rust_emu_common::types::*;
 use super::YRES;
 
 #[repr(u8)]
+#[derive(Clone, Copy)]
 pub(crate) enum LcdMode {
   Hblank,
   Vblank,
@@ -35,18 +36,18 @@ impl Into<u8> for LcdMode {
 
 #[repr(u8)]
 pub(crate) enum StatSrc {
-    Hblank,
-    Vblank,
-    Oam,
-    Lyc,
+  Hblank,
+  Vblank,
+  Oam,
+  Lyc,
 }
 
 impl From<u8> for StatSrc {
   fn from(value: u8) -> Self {
     match value {
-      0x0F=> StatSrc::Hblank,
+      0x0F => StatSrc::Hblank,
       0x10 => StatSrc::Vblank,
-      0x20=> StatSrc::Oam,
+      0x20 => StatSrc::Oam,
       0x40 => StatSrc::Lyc,
       _ => panic!("Invalid LCD mode: {}", value),
     }
@@ -69,7 +70,7 @@ pub(crate) struct Dma {
   pub(crate) active: bool,
   pub(crate) byte: Byte,
   pub(crate) value: Byte,
-  pub(crate) start_delay: Byte
+  pub(crate) start_delay: Byte,
 }
 
 impl Dma {
@@ -80,13 +81,13 @@ impl Dma {
     self.start_delay = 2;
   }
 
-  pub fn step(&mut self) -> Option<(Byte, Byte)>{
+  pub fn step(&mut self) -> Option<(Byte, Byte)> {
     if !self.active {
       return None;
     }
 
-    if self.start_delay!=0 {
-      self.start_delay -=1;
+    if self.start_delay != 0 {
+      self.start_delay -= 1;
       return None;
     }
 
@@ -101,8 +102,8 @@ impl Dma {
 #[derive(Default)]
 pub(crate) struct Lcd {
   // registers
-  lcdc: Byte,
-  lcds: Byte,
+  pub lcdc: Byte,
+  pub lcds: Byte,
   pub scroll_y: Byte,
   pub scroll_x: Byte,
   pub ly: Byte,
@@ -141,12 +142,12 @@ impl Lcd {
       sp1_colors: COLORS_DEFAULT,
       sp2_colors: COLORS_DEFAULT,
 
-      dma: Dma::default()
+      dma: Dma::default(),
     }
   }
 
   pub fn read(&self, addr: Address) -> Byte {
-    match addr - 0xFF40{
+    match addr - 0xFF40 {
       0x0 => self.lcdc,
       0x1 => self.lcds,
       0x2 => self.scroll_y,
@@ -164,19 +165,20 @@ impl Lcd {
   }
 
   fn update_palette(&mut self, palette: Byte, pal_switch: Byte) {
+    // log::info!("lcd update palette {:02X} {:04X}", palette, pal_switch);
     let colors = match pal_switch {
       1 => &mut self.sp1_colors,
       2 => &mut self.sp2_colors,
       _ => &mut self.bg_colors,
     };
     colors[0] = COLORS_DEFAULT[(palette & 0x3) as usize];
-    colors[0] = COLORS_DEFAULT[((palette >> 2) & 0x3) as usize];
-    colors[0] = COLORS_DEFAULT[((palette >> 4) & 0x3) as usize];
-    colors[0] = COLORS_DEFAULT[((palette >> 6) & 0x3) as usize];
+    colors[1] = COLORS_DEFAULT[((palette >> 2) & 0x3) as usize];
+    colors[2] = COLORS_DEFAULT[((palette >> 4) & 0x3) as usize];
+    colors[3] = COLORS_DEFAULT[((palette >> 6) & 0x3) as usize];
   }
 
   pub fn write(&mut self, addr: Address, data: Byte) {
-    log::info!("lcd write {:04X} {:02X}", addr, data);
+    // log::info!("lcd write {:04X} {:02X}", addr, data);
     match addr - 0xFF40 {
       0x0 => {
         self.lcdc = data;
@@ -279,7 +281,10 @@ impl Lcd {
   }
 
   pub(crate) fn set_mode(&mut self, mode: LcdMode) {
-    self.lcds = (self.lcdc & 0xFC) | (mode as Byte & 0x3)
+    // log::info!("lcd new mode {:02X}", (mode as Byte & 0x3));
+    // self.lcds = (self.lcdc & 0xFC) | (mode as Byte & 0x3)
+    self.lcds &= 0xFC;
+    self.lcds |= (mode as Byte) & 0x3;
   }
 
   pub(crate) fn lyc(&self) -> bool {
@@ -295,6 +300,7 @@ impl Lcd {
   }
 
   pub(crate) fn window_visible(&self) -> bool {
-    self.win_enable() && self.win_x >= 0 && self.win_x < 167 && self.win_y >= 0 && self.win_y < YRES
+    // self.win_enable() && self.win_x >= 0 && self.win_x < 167 && self.win_y >= 0 && self.win_y < YRES
+    self.win_enable() && self.win_x < 167 && self.win_y < YRES
   }
 }

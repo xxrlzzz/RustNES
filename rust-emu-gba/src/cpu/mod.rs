@@ -1,11 +1,12 @@
-use rust_emu_common::types::*;
+use rust_emu_common::{component::main_bus::MainBus, types::*};
 use serde::{Deserialize, Serialize};
 
 mod gb_opcodes;
 
 use gb_opcodes::Instruction;
 
-use crate::{bus::MainBus, cpu::flag_const::ZERO};
+use crate::{bus::GBAMainBus, cpu::flag_const::ZERO};
+
 
 use self::{
   flag_const::{CARRY, HALF_CARRY, SUBTRACTION},
@@ -59,11 +60,11 @@ pub struct GBCpu {
   halt: bool,
 
   #[serde(skip)]
-  main_bus: MainBus,
+  main_bus: GBAMainBus,
 }
 
 impl GBCpu {
-  pub fn new(main_bus: MainBus) -> Self {
+  pub fn new(main_bus: GBAMainBus) -> Self {
     Self {
         skip_cycles: 0,
         cycles: 0,
@@ -91,15 +92,15 @@ impl GBCpu {
     }
   }
 
-  pub fn set_main_bus(&mut self, main_bus: MainBus) {
+  pub fn set_main_bus(&mut self, main_bus: GBAMainBus) {
     self.main_bus = main_bus;
   }
 
-  pub fn main_bus(&self) -> &MainBus {
+  pub fn main_bus(&self) -> &GBAMainBus {
     &self.main_bus
   }
 
-  pub fn main_bus_mut(&mut self) -> &mut MainBus {
+  pub fn main_bus_mut(&mut self) -> &mut GBAMainBus {
     &mut self.main_bus
   }
 
@@ -146,13 +147,12 @@ impl GBCpu {
       self.cycles += 1;
       1
     } else {
-      let pc = self.r_pc;
+      // let pc = self.r_pc;
       let mut inst = self.fetch_instruction();
       if let Some(data) = self.fetch_data(&inst) {
         inst.param = data;
         self.fetched_data = data;
       } else {
-        // 02B6:
         // inst.param = self.fetched_data;
       }
       // debug print
@@ -174,6 +174,7 @@ impl GBCpu {
     cycle
   }
 
+  #[allow(dead_code)]
   fn debug_flag(&self) -> String {
     format!("{}{}{}{}", 
       if bit_eq(self.r_f, ZERO) {'Z'} else {'-'},
@@ -182,7 +183,8 @@ impl GBCpu {
       if bit_eq(self.r_f, CARRY) {'C'} else {'-'}, )
   }
 
-  fn debug_print(&self, pc: Address, inst: Instruction) {
+  #[allow(dead_code)]
+  fn debug_print(&mut self, pc: Address, inst: Instruction) {
     log::info!("{:08X} - {:04X}: ({:02X} {:04X} {:02X} {:02X}) A: {:02X} F: {} BC: {:02X}{:02X} DE: {:02X}{:02X} HL: {:02X}{:02X}",
       self.cycles * 4, pc, self.cur_op, inst.param,
       self.main_bus.read(pc+1), self.main_bus.read(pc+2),
@@ -673,7 +675,8 @@ impl GBCpu {
   fn inst_ldh(&mut self, inst: Instruction) {
     if inst.reg_1 == RegType::A {
       // log::info!("ldh read bus {:X} {:X}", 0xFF00 | inst.param, self.read_bus(0xFF00 | inst.param));
-      self.set_reg(inst.reg_1, self.read_bus(0xFF00 | inst.param) as Address);
+      let data = self.read_bus(0xFF00 | inst.param) as Address;
+      self.set_reg(inst.reg_1, data);
     } else {
       self.write_bus(self.mem_dis, self.read_reg(RegType::A) as Byte)
     }
@@ -845,10 +848,10 @@ impl GBCpu {
 
       self.r_pc = addr;
       self.skip_cycles += 1;
-      log::info!("jump {:04X}", addr);
+      // log::info!("jump {:04X}", addr);
       true
     } else {
-      log::info!("not jump");
+      // log::info!("not jump");
       false
     }
   }
@@ -964,7 +967,7 @@ impl GBCpu {
   }
 
   #[inline]
-  fn read_bus(&self, addr: Address) -> Byte {
+  fn read_bus(&mut self, addr: Address) -> Byte {
     if addr == 0xFFFF {
       return self.ie_register;
     }

@@ -4,16 +4,17 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use rust_emu_common::{mapper::Mapper, types::*};
+use rust_emu_common::{
+  component::main_bus::{MainBus, RegisterHandler},
+  controller::key_binding_parser::KeyType,
+  mapper::Mapper,
+  types::*,
+};
 
-pub trait RegisterHandler {
-  fn read(&mut self, address: Address) -> Option<Byte>;
-  fn write(&mut self, address: Address, value: Byte) -> bool;
-  fn dma(&mut self, page: *const Byte) -> bool;
-}
+use crate::controller::GBAController;
 
 #[derive(Default)]
-pub struct MainBus {
+pub struct GBAMainBus {
   mapper: Option<Rc<RefCell<dyn Mapper>>>,
 
   wram: Vec<Byte>,
@@ -22,9 +23,11 @@ pub struct MainBus {
   io_serial_data: [Byte; 0x2],
 
   registers: Vec<Arc<Mutex<dyn RegisterHandler>>>,
+
+  control: GBAController,
 }
 
-impl MainBus {
+impl GBAMainBus {
   pub fn new(ppu: Arc<Mutex<dyn RegisterHandler>>, timer: Arc<Mutex<dyn RegisterHandler>>) -> Self {
     Self {
       wram: vec![0; 0x2000],
@@ -34,12 +37,110 @@ impl MainBus {
       io_serial_data: [0; 0x2],
 
       registers: vec![ppu, timer],
+
+      control: GBAController::new(),
     }
   }
 
   pub fn set_mapper(&mut self, mapper: Rc<RefCell<dyn Mapper>>) {
     self.mapper = Some(mapper);
   }
+
+  fn io_read(&mut self, addr: Address) -> Byte {
+    // TODO
+    match addr {
+      0xFF00 => {
+        // game pad
+        self.control.read()
+        // 0xFF
+      }
+      0xFF01 => self.io_serial_data[0],
+      0xFF02 => self.io_serial_data[1],
+      0xFF04..=0xFF07 => {
+        // timer
+        self.registers[1].lock().unwrap().read(addr).unwrap()
+      }
+      0xFF0F => {
+        // interrupt
+        // log::warn!("interrupt read");
+        0xFF
+      }
+      0xFF10..=0xFF3F => {
+        // sound
+        0xFF
+      }
+      0xFF40..=0xFF4B => {
+        // ppu
+        self.registers[0].lock().unwrap().read(addr).unwrap()
+      }
+      _ => {
+        // no impl
+        0
+      }
+    }
+  }
+
+  fn io_write(&mut self, addr: Address, value: Byte) {
+    match addr {
+      0xFF00 => {
+        // game pad
+        self.control.strobe(value)
+      }
+      0xFF01 => {
+        self.io_serial_data[0] = value;
+      }
+      0xFF02 => {
+        self.io_serial_data[1] = value;
+      }
+      0xFF04..=0xFF07 => {
+        // timer
+        self.registers[1].lock().unwrap().write(addr, value);
+      }
+      0xFF0F => {
+        // interrupt
+        // log::warn!("interrupt write {}", value);
+      }
+      0xFF10..=0xFF3F => {
+        // sound
+      }
+      0xFF40..=0xFF4B => {
+        self.registers[0].lock().unwrap().write(addr, value);
+      }
+      _ => {
+        // no impl
+      }
+    }
+  }
+
+  fn wram_read(&self, addr: Address) -> Byte {
+    if addr >= 0xE000 || addr < 0xC000 {
+      log::error!("WRAM read out of range {}", addr);
+      return 0;
+    }
+    self.wram[addr as usize - 0xC000]
+  }
+
+  fn wram_write(&mut self, addr: Address, value: Byte) {
+    if addr >= 0xE000 || addr < 0xC000 {
+      log::error!("WRAM write out of range {}", addr);
+      return;
+    }
+    self.wram[addr as usize - 0xC000] = value;
+  }
+
+  fn hram_read(&self, addr: Address) -> Byte {
+    self.hram[addr as usize - 0xFF80]
+  }
+  fn hram_write(&mut self, addr: Address, value: Byte) {
+    self.hram[addr as usize - 0xFF80] = value;
+  }
+
+  pub fn set_controller_keys(&mut self, p1: Vec<KeyType>) {
+    self.control.set_key_bindings(p1);
+  }
+}
+
+impl MainBus for GBAMainBus {
   /**
    *
    * 0x0000 - 0x3FFF : ROM Bank 0
@@ -56,7 +157,7 @@ impl MainBus {
    * 0xFF00 - 0xFF7F : I/O Registers
    * 0xFF80 - 0xFFFE : Zero Page
    */
-  pub fn read(&self, addr: Address) -> Byte {
+  fn read(&mut self, addr: Address) -> Byte {
     return match addr {
       // ROM data
       0x0000..=0x7FFF => self.mapper.as_ref().unwrap().borrow().read_prg(addr),
@@ -86,71 +187,7 @@ impl MainBus {
     };
   }
 
-  pub fn io_read(&self, addr: Address) -> Byte {
-    // TODO
-    match addr {
-      0xFF00 => {
-        // game pad
-        0xFF
-      }
-      0xFF01 => self.io_serial_data[0],
-      0xFF02 => self.io_serial_data[1],
-      0xFF04..=0xFF07 => {
-        // timer
-        self.registers[1].lock().unwrap().read(addr).unwrap()
-      }
-      0xFF0F => {
-        // interrupt
-        // log::warn!("interrupt read");
-        0xFF
-      }
-      0xFF10..=0xFF3F => {
-        // sound
-        0xFF
-      }
-      0xFF40..=0xFF4B => {
-        // ppu
-        self.registers[0].lock().unwrap().read(addr).unwrap()
-      }
-      _ => {
-        // no impl
-        0
-      }
-    }
-  }
-
-  pub fn io_write(&mut self, addr: Address, value: Byte) {
-    match addr {
-      0xFF00 => {
-        // game pad
-      }
-      0xFF01 => {
-        self.io_serial_data[0] = value;
-      }
-      0xFF02 => {
-        self.io_serial_data[1] = value;
-      }
-      0xFF04..=0xFF07 => {
-        // timer
-        self.registers[1].lock().unwrap().write(addr, value);
-      }
-      0xFF0F => {
-        // interrupt
-        // log::warn!("interrupt write {}", value);
-      }
-      0xFF10..=0xFF3F => {
-        // sound
-      }
-      0xFF40..=0xFF4B => {
-        self.registers[0].lock().unwrap().write(addr, value);
-      }
-      _ => {
-        // no impl
-      }
-    }
-  }
-
-  pub fn write(&mut self, addr: Address, data: Byte) {
+  fn write(&mut self, addr: Address, data: Byte) {
     match addr {
       // ROM data
       0x0000..=0x7FFF => self
@@ -193,28 +230,5 @@ impl MainBus {
       // no impl
       _ => self.hram_write(addr, data),
     }
-  }
-
-  fn wram_read(&self, addr: Address) -> Byte {
-    if addr >= 0xE000 || addr < 0xC000 {
-      log::error!("WRAM read out of range {}", addr);
-      return 0;
-    }
-    self.wram[addr as usize - 0xC000]
-  }
-
-  fn wram_write(&mut self, addr: Address, value: Byte) {
-    if addr >= 0xE000 || addr < 0xC000 {
-      log::error!("WRAM write out of range {}", addr);
-      return;
-    }
-    self.wram[addr as usize - 0xC000] = value;
-  }
-
-  fn hram_read(&self, addr: Address) -> Byte {
-    self.hram[addr as usize - 0xFF80]
-  }
-  fn hram_write(&mut self, addr: Address, value: Byte) {
-    self.hram[addr as usize - 0xFF80] = value;
   }
 }

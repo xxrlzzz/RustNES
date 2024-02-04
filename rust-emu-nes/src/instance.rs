@@ -7,12 +7,12 @@ use std::{
 use ciborium::{de::from_reader, ser::into_writer};
 use image::RgbaImage;
 use log::{error, info, warn};
-use rust_emu_common::{emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}};
+use rust_emu_common::{component::main_bus::MainBus, emulator::RuntimeConfig, instance::{FrameBuffer, Instance, RunningStatus}};
 use std::sync::mpsc;
 
 use crate::{
   apu::Apu,
-  bus::{main_bus::MainBus, message_bus::Message},
+  bus::{main_bus::NESMainBus, message_bus::Message},
   cartridge::NESCartridge,
   cpu::{Cpu, InterruptType},
   mapper::factory,
@@ -178,7 +178,7 @@ impl NESInstance {
     let ppu = Arc::new(Mutex::new(Ppu::new(message_sx.clone())));
 
     let apu = Arc::new(Mutex::new(Apu::new(message_sx.clone())));
-    let mut main_bus = MainBus::new(apu.clone(), ppu.clone());
+    let mut main_bus = NESMainBus::new(apu.clone(), ppu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
 
     let mut cpu = Cpu::new(main_bus);
@@ -245,7 +245,7 @@ impl NESInstance {
         Arc::new(Mutex::new(ppu))
       })
       .unwrap();
-    let mut main_bus = MainBus::load_binary(reader, message_sx, ppu.clone(), apu.clone());
+    let mut main_bus = NESMainBus::load_binary(reader, message_sx, ppu.clone(), apu.clone());
     main_bus.set_controller_keys(runtime_config.ctl1.clone(), runtime_config.ctl2.clone());
     cpu.set_main_bus(main_bus);
     let cpu = Arc::new(Mutex::new(cpu));

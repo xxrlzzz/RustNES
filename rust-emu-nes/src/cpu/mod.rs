@@ -1,9 +1,9 @@
 use std::convert::Into;
 
-use rust_emu_common::types::*;
+use rust_emu_common::{component::main_bus::MainBus, types::*};
 
 use self::opcodes::*;
-use crate::bus::main_bus::MainBus;
+use crate::bus::main_bus::NESMainBus;
 use log::warn;
 use serde::{Deserialize, Serialize};
 
@@ -87,11 +87,11 @@ pub struct Cpu {
   #[serde(skip)]
   interrupt: InterruptType,
   #[serde(skip)]
-  main_bus: MainBus,
+  main_bus: NESMainBus,
 }
 
 impl Cpu {
-  pub fn new(main_bus: MainBus) -> Self {
+  pub fn new(main_bus: NESMainBus) -> Self {
     Self {
       skip_cycles: 0,
       cycles: 0,
@@ -106,15 +106,15 @@ impl Cpu {
     }
   }
 
-  pub fn set_main_bus(&mut self, main_bus: MainBus) {
+  pub fn set_main_bus(&mut self, main_bus: NESMainBus) {
     self.main_bus = main_bus;
   }
 
-  pub fn main_bus(&self) -> &MainBus {
+  pub fn main_bus(&self) -> &NESMainBus {
     &self.main_bus
   }
 
-  pub fn main_bus_mut(&mut self) -> &mut MainBus {
+  pub fn main_bus_mut(&mut self) -> &mut NESMainBus {
     &mut self.main_bus
   }
 

@@ -1,9 +1,9 @@
 use std::sync::mpsc;
 
 use serde::{Deserialize, Serialize};
-use rust_emu_common::types::*;
+use rust_emu_common::{component::main_bus::RegisterHandler, types::*};
 
-use crate::{bus::RegisterHandler, instance::Message, interrupt};
+use crate::{instance::Message, interrupt};
 
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct Timer {

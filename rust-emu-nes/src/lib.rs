@@ -5,6 +5,7 @@ mod cpu;
 pub mod instance;
 mod mapper;
 mod ppu;
+mod controller;
 
 pub type NesError = anyhow::Error;
 pub type NesResult<T> = anyhow::Result<T, NesError>;

@@ -1,4 +1,3 @@
-use crate::types::*;
 pub mod key_binding_parser;
 
 use self::key_binding_parser::{KeyType, TOTAL_BUTTONS};
@@ -16,17 +15,16 @@ pub mod sdl2_key;
 
 #[derive(Default)]
 pub struct Controller {
-  enable_strobe: bool,
-  key_states: u8,
-  key_bindings: Vec<KeyType>,
+  pub key_states: u8,
+  pub key_bindings: Vec<KeyType>,
   #[allow(dead_code)]
-  enable_remote: bool,
+  pub enable_remote: bool,
 }
+
 
 impl Controller {
   pub fn new() -> Self {
     Self {
-      enable_strobe: false,
       key_states: 0,
       #[cfg(not(feature = "wasm"))]
       key_bindings: vec![KeyType::A; TOTAL_BUTTONS],
@@ -38,7 +36,6 @@ impl Controller {
 
   pub fn remote_controller() -> Self {
     Self {
-      enable_strobe: false,
       key_states: 0,
       #[cfg(not(feature = "wasm"))]
       key_bindings: vec![KeyType::A; TOTAL_BUTTONS],
@@ -52,21 +49,8 @@ impl Controller {
     self.key_bindings = keys;
   }
 
-  pub fn strobe(&mut self, b: Byte) {
-    self.enable_strobe = bit_eq(b, 1);
-    if !self.enable_strobe {
-      self.key_states = 0;
-      self.update_keys();
-    }
-  }
+  // impl by submodule
+  // pub fn read(&mut self) -> Byte {}
+  // pub fn strobe(&mut self, b: Byte) {}
 
-  pub fn read(&mut self) -> Byte {
-    return if self.enable_strobe {
-      self.read_key(&self.key_bindings[0]) as u8 | 0x40
-    } else {
-      let ret = self.key_states & 1;
-      self.key_states >>= 1;
-      ret
-    } | 0x40;
-  }
 }

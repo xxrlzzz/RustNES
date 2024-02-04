@@ -168,6 +168,7 @@ impl PixelFiFo {
 
   fn load_sprite_tile(&mut self, line_sprites: Vec<usize>, lcd: &Lcd, picture_bus: &PictureBus) {
     let oams = picture_bus.oam_ram();
+    // log::info!("load sprite");
     for i in line_sprites {
       let entry = &oams[i];
       let sp_x = entry.x - 8 + (lcd.scroll_x % 8);
@@ -201,13 +202,15 @@ impl PixelFiFo {
       let idx = hi | (lo << 1);
       let mut color = lcd.bg_colors[idx as usize];
 
-      if lcd.bgw_enable() {
+      if !lcd.bgw_enable() {
         color = lcd.bg_colors[0];
       }
 
       if lcd.obj_enable() {
         color = self.fetch_sprite_pixels(lcd, color, idx);
       }
+
+      // log::info!("push color {:X} {:02X} {} {}", color, idx, lcd.bgw_enable(), lcd.obj_enable());
 
       self.fifo_push(color);
       self.fifo_x += 1;

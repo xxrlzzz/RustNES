@@ -7,6 +7,8 @@ pub mod mapper;
 pub mod emulator;
 pub mod controller;
 pub mod render;
+// Not using.
+pub mod list;
 
 extern crate image;
 extern crate log;

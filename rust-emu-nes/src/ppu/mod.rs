@@ -1,4 +1,5 @@
 use image::{GenericImage, RgbaImage};
+use rust_emu_common::component::main_bus::RegisterHandler;
 use rust_emu_common::mapper::Mapper;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -9,7 +10,7 @@ use std::vec::Vec;
 mod palette_colors;
 
 use crate::bus::main_bus::{
-  IORegister, RegisterHandler, OAM_ADDR, OAM_DATA, PPU_ADDR, PPU_CTRL, PPU_DATA, PPU_MASK,
+  OAM_ADDR, OAM_DATA, PPU_ADDR, PPU_CTRL, PPU_DATA, PPU_MASK,
   PPU_SCROL, PPU_STATUS,
 };
 use crate::bus::message_bus::Message;
@@ -594,7 +595,7 @@ impl Ppu {
 }
 
 impl RegisterHandler for Ppu {
-  fn read(&mut self, address: IORegister) -> Option<Byte> {
+  fn read(&mut self, address: Address) -> Option<Byte> {
     match address {
       PPU_STATUS => Some(self.get_status()),
       PPU_DATA => Some(self.get_data()),
@@ -603,7 +604,7 @@ impl RegisterHandler for Ppu {
     }
   }
 
-  fn write(&mut self, address: IORegister, value: Byte) -> bool {
+  fn write(&mut self, address: Address, value: Byte) -> bool {
     match address {
       PPU_CTRL => self.control(value),
       PPU_MASK => self.set_mask(value),

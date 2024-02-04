@@ -5,10 +5,10 @@ use rust_emu_gba::instance::init_rom_from_path;
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
 struct Args {
-  #[clap(short, long, default_value = "assets/Tetris(World).gb")]
+  #[clap(short, long, default_value = "../assets/Tetris(World).gb")]
   rom_path: String,
   // relative path to where you run cmd.
-  #[clap(short, long, default_value = "assets/keybindings.ini")]
+  #[clap(short, long, default_value = "../assets/keybindings.ini")]
   key_binding_path: String,
 
   #[clap(short, long, default_value = "2.0")]
